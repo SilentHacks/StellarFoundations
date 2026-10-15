@@ -1,0 +1,11 @@
+global using HarmonyRuntime = HarmonyLib.Harmony;
+global using Core.Values;
+global using Core.Utils;
+global using Ships.Services;
+global using Ships.Visuals;
+global using Ships.Physics.Model;
+global using Ships.Interface.Model.State;
+global using Tools.Utils;
+global using Ships.Interface.Model;
+global using Managers.Server;
+global using Managers.Interface.Services;

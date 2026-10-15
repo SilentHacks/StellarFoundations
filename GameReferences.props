@@ -1,0 +1,18 @@
+<Project>
+  <ItemGroup>
+    <Reference Include="$(GameManagedDirectory)/*.dll" Exclude="$(GameManagedDirectory)/mscorlib.dll;$(GameManagedDirectory)/System*.dll;$(GameManagedDirectory)/netstandard.dll">
+      <Private>false</Private>
+      <Private Condition="'$(IsTestProject)' == 'true'">true</Private>
+    </Reference>
+    <Reference Include="MelonLoader;0Harmony">
+      <HintPath>$(GameDirectory)/MelonLoader/net472/%(Identity).dll</HintPath>
+      <Private>false</Private>
+      <Private Condition="'$(IsTestProject)' == 'true'">true</Private>
+    </Reference>
+    <Reference Include="SDModKit">
+      <HintPath>$(GameDirectory)/Mods/SDModKit.dll</HintPath>
+      <Private>false</Private>
+      <Private Condition="'$(IsTestProject)' == 'true'">true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

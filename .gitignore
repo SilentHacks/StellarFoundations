@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+artifacts/
+Directory.Build.local.props
+.vs/
+TestResults/
+*.user
