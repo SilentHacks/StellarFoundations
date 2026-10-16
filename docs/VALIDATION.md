@@ -12,7 +12,7 @@ revalidation rather than simply changing the version check.
 
 ## Release candidate 0.5.0, 16 October 2026
 
-This candidate changes release identity, packaging and documentation, removes
+This candidate changes release identity, packaging, build path mapping and documentation, removes
 unused interaction-card fields/text and fallback metal-material allocations, and
 extracts the existing hint sentence join for regression coverage. All 108 offline
 tests pass with warning-free Release compilation. It retains the 0.4.3 geometry, physics, transactions,
