@@ -200,7 +200,7 @@ internal static class FoundationSaving
     {
         if (job.Shown) return; job.Shown = true;
         Status = "Save failed. Previous complete save or recovery copies retained.";
-        MelonLoader.MelonLogger.Error("Stellar Foundations: " + job.Error);
+        MelonLoader.MelonLogger.Error(Plugin.DisplayName + ": " + job.Error);
         Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
     }
     internal static void Draw()

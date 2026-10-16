@@ -75,6 +75,7 @@ internal static class RuntimeHooks
         harmony.Patch(remove, prefix: new HarmonyMethod(typeof(RuntimeHooks), nameof(GuardRemove)));
         Patch(harmony, typeof(ShipInteractionService), "RpcLogic___PlaceFloatingPart_ServerRPC___2366367339", nameof(GuardNativePlacement), null);
         Patch(harmony, typeof(ShipInteractionService), "RpcLogic___RemoveFloatingPart_ServerRPC___1471205784", nameof(GuardNativeRemoval), null);
+        Patch(harmony, typeof(ShipInteractionService), "RpcLogic___RemoveHullPart_ServerRPC___930806135", nameof(GuardHullRemoval), null);
         Patch(harmony, typeof(ShipInteractionService), "RpcLogic___PickUpPart_ServerRPC___2228377996", nameof(GuardPickup), null);
         Patch(harmony, typeof(ShipInteractionService), "RpcLogic___ConfirmRepositionShip_ServerRPC___2616489143", nameof(GuardReposition), null);
         Patch(harmony, typeof(ShipInteractionService), "RpcLogic___StartRepositionShip_ServerRPC___328543758", nameof(GuardStartReposition), null);
@@ -249,7 +250,7 @@ internal static class RuntimeHooks
     private static bool BeforeDock(ShipMagnetData doorA, ShipMagnetData doorB)
     {
         var accepted = Policy.CanJoin(AssemblyGround(doorA.ShipId, true), AssemblyGround(doorB.ShipId, true));
-        if (!accepted) FoundationTool.Status = "Cannot dock two independently grounded bases.";
+        if (!accepted) FoundationTool.NotifyBlocked("Cannot dock two independently grounded bases.");
         return accepted;
     }
 
@@ -328,6 +329,8 @@ internal static class RuntimeHooks
         var ship = ServiceLocator.GetService<ShipsServerTracker>().GetShip(__0.ShipId);
         return ship == null || !ship.TryGetStatefulPart(__0.PartId, out var part) || !PartRegistration.IsFoundation(part);
     }
+    private static bool GuardHullRemoval(RemoveHullPartNetworkRequest __0) =>
+        !FoundationRegistry.HasFloorAttachment(__0.ShipId, __0.Position);
     private static bool GuardPickup(PartInteractNetworkRequest __0)
     {
         var ship = ServiceLocator.GetService<ShipsServerTracker>().GetShip(__0.ShipId);
@@ -345,7 +348,7 @@ internal static class RuntimeHooks
         var player = GameRefs.PlayersServer?.GetTrackedPlayerFromConnectionId(__0.ClientId);
         if (player == null || !ServiceLocator.GetService<ShipsServerTracker>().TryGetNearestRepositionableShip(player.SpaceId, player.Position, out var ship)) return true;
         if (!AssemblyGround(ship.Id).HasValue) return true;
-        FoundationTool.Status = "Remove the last foundation before repositioning this structure."; return false;
+        FoundationTool.NotifyBlocked("Remove the last foundation before repositioning this structure."); return false;
     }
     private static void AfterVisualPart(ShipPartVisuals __instance, StatefulPart part)
     {

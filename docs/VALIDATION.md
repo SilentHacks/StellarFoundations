@@ -1,74 +1,75 @@
-# Local validation — 15 October 2026
+# Validation and support scope
 
-This is a local 0.1.0 preview. All live changes used isolated save copies. The
-automated drivers are private tools and are absent from the shipping DLL/package.
-Normal game launches do not run tests, load a test world or quit automatically.
+## Supported environment
 
-## Stage 1: placement and native physics
+- StellarDrive Demo 0.8.2, Mono, Unity 6000.3.24f1.
+- MelonLoader 0.7.3 and SDModKit 1.3.3.
+- Shipping assembly: .NET Framework 4.7.2. Offline tests: .NET 9.
 
-- Startup, part registration and the four-wood recipe passed in the installed
-  MelonLoader 0.7.3 / SDModKit 1.3.3 stack.
-- Authoritative placement used real terrain validation and the registered server
-  command handler. The request was serialized/deserialized before dispatch.
-- The native build-preview detector snapped a first floor onto the mounting grid;
-  the native floor placement RPC added it.
-- A real dynamic collision probe contacted the new base without moving its
-  canonical pose. Kinematic bodies and enabled collisions were asserted.
-- Native material inspection and screenshots exposed and corrected incompatible
-  default materials and an initially incorrect first-floor mesh orientation.
+Assembly identities and inspected native contracts are checked. Unsupported
+binaries or conflicting movement/save patches fail closed. A game update needs
+revalidation rather than simply changing the version check.
 
-## Stage 2: persistence and networking
+## Release candidate 0.5.0, 16 October 2026
 
-- Native paired save, process restart and fixed-pose restoration passed.
-- Native automatic backup produced a hash-matched metadata sidecar; loading the
-  backup retained its world data through world entry.
-- An intentionally mismatched copy was rejected before world entry and returned
-  to the menu. Both rejected files remained byte-for-byte unchanged.
-- Portable-copy export passed. That copy loaded with Foundations initialization
-  disabled and contained no foundation parts. Source attachments remained intact.
-- Separate headless game processes tested actual loopback transport: host, two
-  matching clients including a late join, and an initialization-disabled client
-  rejected before authentication. This is a protocol test, not rendered co-op QA.
-- Steam-hosted tests exposed the shipped transport's pre-authentication Split
-  handling once a snapshot grew beyond one packet. Small snapshot chunks fixed
-  the failure and subsequent Steam-hosted captures passed.
+This candidate changes release identity, packaging and documentation, removes
+unused interaction-card fields/text and fallback metal-material allocations, and
+extracts the existing hint sentence join for regression coverage. All 108 offline
+tests pass with warning-free Release compilation. It retains the 0.4.3 geometry, physics, transactions,
+0.8 second holds, item ID 61240, save format 2 and protocol 4.
 
-## Stage 3: conversion and interactions
+Release preparation builds and tests the committed revision, verifies manifest/DLL/
+content metadata, and checks every ZIP entry against its source bytes. The manager
+payload contains only `Mods/StellarFoundations.dll` and `mod.json`. Source revision,
+DLL/ZIP hashes and the intended tag are recorded beside the ZIP.
 
-- An existing 430-part structure converted through the authoritative hold, keeping
-  existing native part objects and its pose.
-- The copied 5,556-part structure converted with all 4,964 hull parts and 592
-  stateful parts preserved. Loading its physics region exposed and corrected
-  placement's selection of the wrong scene on planets with multiple regions.
-- The final-pier warning hold and return to native dynamic physics passed.
-- A 108-mass visitor docked to a 28.1-mass grounded base. The base remained root
-  after native joint rebuilding. A same-tick bridge to a second independent base
-  was rejected. Switching off the native magnet signal undocked the visitor while
-  the base stayed fixed.
-- An additional pier attached successfully. Native damage removal of one support
-  retained grounding; removal of the final support restored dynamic physics.
-- A native graph out-parameter binding bug discovered by these tests was fixed.
+The release thumbnail was captured in the native game from an isolated world copy,
+using a staged camera and lighting. It shows the actual timber model. Capture
+tools and test worlds are excluded from the release. All 74 original save files
+and all 96 baseline files/backups were verified unchanged after capture.
 
-## Stage 4: qualification and limitations
+The game was closed after media capture so release preparation could continue
+without taking over the desktop. The 0.5.0 candidate has offline validation;
+the native checks below ran against its 0.4.3 gameplay predecessor. Do not describe
+those as native testing of the final 0.5.0 binary.
 
-- 46 offline tests cover policy, interruption and replay, bounded coordinates, metadata integrity,
-  recovery journals, damaged recovery backups, portable-copy preservation, wire
-  serialization, native contracts and grounded graph selection. No Harmony or
-  MonoMod detours are installed in the CoreCLR test process.
-- Runtime tests used the user's existing mod stack. A separate test activated
-  Workshop's world-scoped saving on the isolated copy. It exposed competing save
-  captures; a guarded adapter now gives Foundations sole ownership of paired saves
-  while retaining Workshop's behavior on worlds without grounding data. The
-  qualified Workshop binary has MVID `40054375-01b2-4786-8f92-7675b17a25d2`.
-- Preview terrain checks are limited to 20 Hz while the pier is selected. There
-  are no always-on diagnostic captures or whole-world scans each frame.
-- No frame-rate or multiplayer throughput improvement is claimed. Native render
-  submission, rooms, production and connected entities continue running.
-- Manual UI input, wide gameplay soak tests, terrain-deformation integrations,
-  arbitrary third-party docking/physics mods and WAN co-op performance remain
-  unqualified. Native headless-rendering and shutdown messages were distinguished
-  from Foundations exceptions in the private logs.
+## Native gameplay evidence
 
-The original world has not been converted. Test worlds and their exported copies
-remain separate from the real save. Installation and original-file restoration
-receipts are retained with the private runtime evidence.
+0.4.3 passed 104 offline tests and warning-free Release compilation. Its exact
+shipping DLL passed complete native interaction runs at **1920 x 1080** and
+**2560 x 1080**, using fresh isolated save copies. Programmatic camera/input data
+exercised the native builder, recycler, inventory, physics and host feedback.
+
+- Ordinary placement and material shortages use native visual feedback without
+  routine explanatory boxes.
+- Hold actions and consequences share one native hint label with sentence
+  punctuation and no wrapping at the tested resolutions.
+- Covered-anchor targeting, cancellation/restart, short conversion/removal holds
+  and floor preservation pass.
+- Missing host responses time out after three seconds even while requests continue.
+- Protected-floor rejection happens before recycler success effects/repeating.
+- First-floor snapping, two dynamic collision contacts, fixed pose, conversion and
+  paired native saving pass.
+- Timber materials, rotated footing, selected-floor/contact markers and recycler
+  highlights were inspected visually through the native render pipeline.
+
+Earlier native runs covered a **5,556-part** conversion, save reload, automatic
+backup pairing, crash recovery/export, damage, redundant supports, final release,
+docking/undocking, rotor topology and local multiplayer transport/handshake checks.
+These are historical checks, not a complete requalification of every later binary.
+
+Every native mutation used an isolated world copy. Original worlds were hash-checked
+against backups, private drivers were removed and test copies were archived.
+No game, loader, SDK assemblies or private world data are distributed.
+
+## Remaining qualification
+
+0.5.0 is suitable for a labelled single-player preview of this inspected stack.
+It is not a fully qualified co-op release. Remaining work includes:
+
+- A real remote host/client session, including latency and disconnect/rejoin.
+- Extended ordinary play, saving and world re-entry.
+- Human controller input and the complete HUD-scale/resolution matrix.
+- Compatibility with terrain-deformation mods and uninspected third-party patches.
+
+No FPS or simulation-performance improvement is claimed.

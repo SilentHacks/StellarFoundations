@@ -24,17 +24,32 @@ internal sealed class CheckedPlacement
     internal Vector3 Cap, Foot, Normal;
     internal Quaternion Rotation;
     internal float Length;
+    internal AttachmentKind Kind;
+    internal float Clearance;
+    internal bool PendingTerrain;
     internal PierRecord Record(ushort part) => new PierRecord {
         Id = Guid.NewGuid().ToString("N"), Part = part,
         LocalCap = Ship == null ? Position(Vector3.down * 0.55f) : Position(Cap),
-        LocalFoot = Position(Ship == null ? Foot + Vector3.down * 0.55f : Foot), LocalFootNormal = Position(Normal), Length = Length
+        LocalFoot = Position(Ship == null ? Foot + Vector3.down * 0.55f : Foot), LocalFootNormal = Position(Normal), Length = Length,
+        Kind = Kind, Clearance = Clearance, RequiresFloor = Ship != null, HasCollar = true
     };
     private static PositionD Position(Vector3 value) => new PositionD(value.x, value.y, value.z);
+}
+
+internal struct SurfaceContact
+{
+    internal Vector3 Foot, Normal;
+    internal float Clearance;
+    internal AttachmentKind Kind;
+    internal bool PendingTerrain, HasBlocker;
+    internal Vector3 Blocker;
 }
 
 internal static class Geometry
 {
     private static readonly Collider[] Overlaps = new Collider[64];
+    private static readonly RaycastHit[] TerrainHits = new RaycastHit[128];
+    private static Collider? _blocker;
     private static readonly ConditionalWeakTable<GroundRecord, PlanetSurfaceSpace> CanonicalSpaces = new ConditionalWeakTable<GroundRecord, PlanetSurfaceSpace>();
     internal static Vector3 Vector(PositionD value) => new Vector3((float)value.X, (float)value.Y, (float)value.Z);
     internal static Vector3Double Double(PositionD value) => new Vector3Double(value.X, value.Y, value.Z);
@@ -42,6 +57,10 @@ internal static class Geometry
     internal static PositionD Position(Vector3 value) => new PositionD(value.x, value.y, value.z);
     internal static Quaternion Rotation(RotationF value) => new Quaternion(value.X, value.Y, value.Z, value.W);
     internal static RotationF Rotation(Quaternion value) => new RotationF(value.x, value.y, value.z, value.w);
+    internal static HullPartPosition FloorAtCap(Vector3 cap) =>
+        new HullPartPosition(Vector3Int.RoundToInt(cap + Vector3.up * 0.55f), VoxelPartType.Floor);
+    internal static bool SupportsFloor(PierRecord pier, HullPartPosition floor) =>
+        pier.RequiresFloor && FloorAtCap(Vector(pier.LocalCap)).Equals(floor);
 
     internal static Quaternion Level(Vector3 gravity, Vector3 heading)
     {
@@ -51,6 +70,12 @@ internal static class Geometry
         if (forward.sqrMagnitude < 0.001f) forward = Vector3.ProjectOnPlane(Vector3.forward, up);
         if (forward.sqrMagnitude < 0.001f) forward = Vector3.ProjectOnPlane(Vector3.right, up);
         return Quaternion.LookRotation(forward.normalized, up);
+    }
+    internal static Quaternion SurfaceRotation(Quaternion platform, Vector3 normal)
+    {
+        var forward = Vector3.ProjectOnPlane(platform * Vector3.forward, normal);
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.ProjectOnPlane(platform * Vector3.right, normal);
+        return Quaternion.LookRotation(forward.normalized, normal.normalized);
     }
 
     internal static GroundRecord Ground(uint shipId, uint spaceId, Vector3 position, Quaternion rotation)
@@ -100,9 +125,9 @@ internal static class Geometry
             var ship = ships.GetShip(request.Ship);
             if (ship == null) { reason = "Structure is no longer available."; return false; }
             if (!RuntimeHooks.CanConvert(ship, out reason)) return false;
-            var coord = Vector3Int.RoundToInt(cap + new Vector3(0, 0.55f, 0));
-            if (!ship.State.ContainsHullPart(new HullPartPosition(coord, VoxelPartType.Floor))) { reason = "Aim at an ordinary floor tile."; return false; }
-            var expected = PartPositionHelper.GetHullPartInteriorPos(new HullPartPosition(coord, VoxelPartType.Floor)) - Vector3.up * 0.05f;
+            var floor = FloorAtCap(cap);
+            if (!ship.State.ContainsHullPart(floor)) { reason = "Aim at an ordinary floor tile."; return false; }
+            var expected = PartPositionHelper.GetHullPartInteriorPos(floor) - Vector3.up * 0.05f;
             if ((cap - expected).sqrMagnitude > 0.0001f) { reason = "Foundation must snap beneath the selected floor."; return false; }
             foreach (var existing in ship.StatefulParts)
                 if (PartRegistration.IsFoundation(existing) && (existing.LocalPosition - cap).sqrMagnitude < 0.04f) { reason = "This floor already has a foundation."; return false; }
@@ -111,34 +136,19 @@ internal static class Geometry
         if (!InReach(player, source, cap)) { reason = "Foundation is out of build reach."; return false; }
         var surface = spaces.GetSpaceOutsideOfShip(source) as PlanetSurfaceSpace;
         if (surface == null) { reason = "Planetary terrain is required."; return false; }
-        if (!FindSurfaceScene(surface.PlanetId, out var sceneSpace, out var physics, source, cap)) { reason = "Terrain is still loading."; return false; }
+        if (!FindSurfaceScene(surface.PlanetId, out var sceneSpace, out var physics, source, cap)) { placement.PendingTerrain = true; reason = "Move closer while planetary terrain loads."; return false; }
         var sceneCap = transpose.Position(source, sceneSpace, cap);
         var sceneRotation = transpose.Rotation(source, sceneSpace, rotation);
         var gravity = ServiceLocator.GetService<IWorldEnvironmentServerProvider>().GetGravityAtPosition(sceneSpace, sceneCap);
         if (gravity.sqrMagnitude < 0.0001f) { reason = "Planetary gravity is required."; return false; }
         var up = -gravity.normalized;
         if (request.Action == CommandAction.New && Vector3.Dot(sceneRotation * Vector3.up, up) < 0.9999f) { reason = "Foundation mounting plate must be level."; return false; }
-        if (!Footprint(physics, sceneCap, up, out var foot, out var normal, out reason)) return false;
-        var length = (sceneCap - foot).magnitude;
-        var count = physics.OverlapCapsule(sceneCap - up * 0.22f, foot + up * 0.15f, 0.13f, Overlaps, ~0, QueryTriggerInteraction.Ignore);
-        if (count == Overlaps.Length) { reason = "Too many obstructions to validate this placement."; return false; }
-        for (var i = 0; i < count; i++)
-        {
-            var collider = Overlaps[i];
-            if (collider.CompareTag("Planet")) continue;
-            reason = "Foundation column is obstructed."; return false;
-        }
-        count = physics.OverlapBox(sceneCap - sceneRotation * Vector3.up * 0.1f, new Vector3(0.43f, 0.08f, 0.43f), Overlaps, sceneRotation, ~0, QueryTriggerInteraction.Ignore);
-        if (count == Overlaps.Length) { reason = "Too many obstructions to validate this placement."; return false; }
-        for (var i = 0; i < count; i++)
-        {
-            var collider = Overlaps[i];
-            // The mounting plate may touch the floor it supports, but not other geometry.
-            if (placement.Ship != null && collider.CompareTag("HullFloor") && collider.GetComponentInParent<IShipPartHelper>()?.ShipId == placement.Ship.Id) continue;
-            reason = "Foundation mounting plate is obstructed."; return false;
-        }
+        if (!CheckAttachment(physics, sceneCap, sceneRotation, up, placement.Ship?.Id, out var contact, out reason))
+        { placement.PendingTerrain = contact.PendingTerrain; return false; }
+        var foot = contact.Foot; var normal = contact.Normal;
         placement.Space = request.Action == CommandAction.New ? source : placement.Ship!.SpaceId;
-        placement.Surface = surface; placement.Cap = cap; placement.Rotation = rotation; placement.Length = length;
+        placement.Surface = surface; placement.Cap = cap; placement.Rotation = rotation; placement.Length = (sceneCap - foot).magnitude;
+        placement.Kind = contact.Kind; placement.Clearance = contact.Clearance;
         if (placement.Ship == null)
         {
             var sourceFoot = transpose.Position(sceneSpace, source, foot);
@@ -174,22 +184,78 @@ internal static class Geometry
         return physics.IsValid();
     }
 
-    internal static bool Footprint(PhysicsScene physics, Vector3 cap, Vector3 up, out Vector3 foot, out Vector3 normal, out string reason)
+    // Preview and authority use the same terrain and obstruction checks. A terrain
+    // lookup ignores hulls; the separate volume checks still reject an intervening
+    // floor, machinery, another structure, or an occupied mounting plate.
+    internal static bool CheckAttachment(PhysicsScene physics, Vector3 cap, Quaternion rotation, Vector3 up, uint? ship,
+        out SurfaceContact contact, out string reason)
     {
-        foot = normal = Vector3.zero; reason = "Ground is beyond the six metre reach.";
-        if (!physics.Raycast(cap - up * 0.12f, -up, out var center, Policy.MaximumLength, ~0, QueryTriggerInteraction.Ignore) || !center.collider.CompareTag("Planet")) return false;
-        foot = center.point; normal = center.normal;
-        if ((cap - foot).magnitude < Policy.MinimumLength || (cap - foot).magnitude > Policy.MaximumLength) { reason = "Not enough room for the foundation."; return false; }
-        if (Vector3.Dot(normal, up) < 0.5f) { reason = "Terrain is too steep for the foundation foot."; return false; }
-        var right = Vector3.Cross(up, Math.Abs(up.z) < 0.9 ? Vector3.forward : Vector3.right).normalized;
-        var forward = Vector3.Cross(right, up);
+        contact = default;
+        if (!TerrainBelow(physics, cap, up, out var center, out reason, out var pending)) { contact.PendingTerrain = pending; return false; }
+        contact.Foot = center.point; contact.Normal = center.normal;
+        var clearance = Vector3.Dot(cap - center.point, up);
+        if (!Policy.ClassifyAttachment(clearance, out var kind, out reason)) return false;
+        if (!ship.HasValue && kind == AttachmentKind.Contact) { reason = "Raise the new foundation slightly to leave room for its mounting plate."; return false; }
+        if (Vector3.Dot(center.normal, up) < 0.5f) { reason = "Terrain is too steep for the foundation foot."; return false; }
+        var footRotation = SurfaceRotation(rotation, center.normal);
+        var right = footRotation * Vector3.right;
+        var forward = footRotation * Vector3.forward;
         for (var i = 0; i < 4; i++)
         {
-            var offset = (i < 2 ? right : forward) * (i % 2 == 0 ? 0.25f : -0.25f);
-            if (!physics.Raycast(cap + offset - up * 0.12f, -up, out var hit, Policy.MaximumLength + 0.5f, ~0, QueryTriggerInteraction.Ignore)
-                || !hit.collider.CompareTag("Planet") || Math.Abs(Vector3.Dot(hit.point - foot, normal)) > 0.12f)
+            var offset = right * ((i & 1) == 0 ? 0.25f : -0.25f) + forward * ((i & 2) == 0 ? 0.25f : -0.25f);
+            if (!TerrainBelow(physics, cap + offset, up, out var hit, out reason, out pending)) { contact.PendingTerrain = pending; return false; }
+            if (!Policy.ClassifyAttachment(Vector3.Dot(cap + offset - hit.point, up), out _, out reason)) return false;
+            if (Vector3.Dot(hit.normal, up) < 0.5f || Math.Abs(Vector3.Dot(hit.point - center.point, center.normal)) > 0.12f)
             { reason = "Foundation foot needs a continuous terrain surface."; return false; }
         }
+        if (kind == AttachmentKind.Pier)
+        {
+            var count = physics.OverlapCapsule(cap - up * 0.15f, center.point + up * 0.06f, 0.10f, Overlaps, ~0, QueryTriggerInteraction.Ignore);
+            if (!Clear(count, null, true, out reason)) { MarkBlocker(ref contact, cap); if (reason.Length == 0) reason = "Column blocked. Choose a clear path to the ground."; return false; }
+            count = physics.OverlapBox(center.point, new Vector3(0.32f, 0.055f, 0.32f), Overlaps, footRotation, ~0, QueryTriggerInteraction.Ignore);
+            if (!Clear(count, null, true, out reason)) { MarkBlocker(ref contact, cap); if (reason.Length == 0) reason = "Footing blocked. Choose another floor."; return false; }
+        }
+        var plateCount = physics.OverlapBox(cap - rotation * Vector3.up * 0.1f, new Vector3(0.43f, 0.08f, 0.43f), Overlaps, rotation, ~0, QueryTriggerInteraction.Ignore);
+        if (!Clear(plateCount, ship, kind == AttachmentKind.Contact, out reason)) { MarkBlocker(ref contact, cap); if (reason.Length == 0) reason = "Mounting plate blocked. Choose another floor."; return false; }
+        var collarCount = physics.OverlapBox(cap + rotation * Vector3.up * Policy.CollarHeight, new Vector3(0.35f, Policy.CollarThickness * 0.5f, 0.35f), Overlaps, rotation, ~0, QueryTriggerInteraction.Ignore);
+        if (!Clear(collarCount, ship, false, out reason)) { MarkBlocker(ref contact, cap); if (reason.Length == 0) reason = "Leave clear space on top of this floor for the anchor plate."; return false; }
+        contact = new SurfaceContact { Foot = center.point, Normal = center.normal, Clearance = clearance, Kind = kind };
         reason = ""; return true;
+    }
+
+    private static bool Clear(int count, uint? allowedFloorShip, bool allowTerrain, out string reason)
+    {
+        reason = "";
+        _blocker = null;
+        if (count == Overlaps.Length) { reason = "Too many obstructions to validate this placement."; return false; }
+        for (var i = 0; i < count; i++)
+        {
+            var collider = Overlaps[i];
+            if (allowTerrain && collider.CompareTag("Planet")) continue;
+            if (allowedFloorShip.HasValue && collider.CompareTag("HullFloor") && collider.GetComponentInParent<IShipPartHelper>()?.ShipId == allowedFloorShip.Value) continue;
+            _blocker = collider; return false;
+        }
+        return true;
+    }
+
+    private static void MarkBlocker(ref SurfaceContact contact, Vector3 cap)
+    { if (_blocker != null) { contact.HasBlocker = true; contact.Blocker = _blocker.ClosestPoint(cap); } }
+    private static bool TerrainBelow(PhysicsScene physics, Vector3 cap, Vector3 up, out RaycastHit hit, out string reason, out bool pending)
+    {
+        // The accepted contact band is only 10 cm above the cap. Starting 2 m
+        // above it avoids casting from inside a valid ground-contact surface.
+        // Collect all hits so the supported floor cannot hide the terrain.
+        const float probeHeight = 2f;
+        var count = physics.Raycast(cap + up * probeHeight, -up, TerrainHits, probeHeight + Policy.MaximumLength + 0.5f, ~0, QueryTriggerInteraction.Ignore);
+        hit = default;
+        pending = false;
+        if (count == TerrainHits.Length) { reason = "Too many surfaces to validate this foundation."; return false; }
+        var nearest = float.PositiveInfinity;
+        for (var i = 0; i < count; i++)
+            if (TerrainHits[i].collider.CompareTag("Planet") && TerrainHits[i].distance < nearest)
+            { nearest = TerrainHits[i].distance; hit = TerrainHits[i]; }
+        reason = "Terrain surface unavailable here. Wait for terrain to load or choose an exposed floor.";
+        pending = nearest == float.PositiveInfinity;
+        return nearest < float.PositiveInfinity;
     }
 }

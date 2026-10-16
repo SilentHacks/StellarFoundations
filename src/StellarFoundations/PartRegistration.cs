@@ -14,30 +14,37 @@ namespace StellarFoundations;
 internal static class PartRegistration
 {
     internal const string Asset = "SilentHacks.FoundationPier";
-    private static Material? _columnMaterial, _footMaterial;
-    private static PartSettings? _basicFloor;
-    internal static PartSettings Settings => CustomParts.Get(Policy.PartSettingsId) ?? throw new InvalidOperationException("Foundation Pier is not registered.");
-    internal static void Register()
-    {
-        if (ContentRegistry.PartDef(Policy.PartSettingsId) != null) throw new InvalidOperationException("Foundation part ID is already registered by another pack.");
-        ContentRegistry.LoadJson(typeof(Plugin).Assembly, @"{
-          'id':'silenthacks.foundations','name':'Stellar Foundations','version':'0.1.0',
-          'parts':[{'id':61240,'asset':'SilentHacks.FoundationPier','label':'Foundation Pier',
-          'description':'Stationary planetary support for ordinary floors. Scroll rotates; Shift + scroll adjusts height. Hold build to attach an existing structure without moving it.',
+    internal const string Definition = @"{
+          'id':'silenthacks.foundations','name':'" + Plugin.DisplayName + @"','version':'" + Plugin.Version + @"',
+          'parts':[{'id':61240,'asset':'SilentHacks.FoundationPier','label':'Foundation',
+          'description':'Anchors a structure to the ground.',
           'donor':'SignalSplitter','state':'SignalSplitterState','snapping':'UnderFloor','buildMenuAfter':'WoodFloor','mass':20,
           'bounds':{'center':[0,-0.1,0],'size':[0.9,0.2,0.9]},'sockets':[],
           'visual':{'clearDonor':true,'meshes':[{'shape':'cube','position':[0,-0.1,0],'scale':[0.9,0.2,0.9],'color':'#59636e'}]}}]
-        }", "foundations");
+        }";
+    private static PartSettings? _basicFloor;
+    internal static PartSettings Settings => CustomParts.Get(Policy.PartSettingsId) ?? throw new InvalidOperationException("Foundation is not registered.");
+    internal static void Register()
+    {
+        if (ContentRegistry.PartDef(Policy.PartSettingsId) != null) throw new InvalidOperationException("Foundation part ID is already registered by another pack.");
+        ContentRegistry.LoadJson(typeof(Plugin).Assembly, Definition, "foundations");
         new HarmonyRuntime(Plugin.Owner).Patch(Compatibility.Method(typeof(ContentBuilder), "Configure"),
             postfix: new HarmonyMethod(typeof(PartRegistration), nameof(Configured)));
         new HarmonyRuntime(Plugin.Owner).Patch(Compatibility.Method(typeof(Research.ResearchClientProxy), "IsPartUnlocked"),
             prefix: new HarmonyMethod(typeof(PartRegistration), nameof(FoundationUnlock)));
     }
 
-    private static void Configured(ContentPartDef def, PartSettings settings)
+    private static void Configured(ContentPartDef def, PartSettings settings, GameObject prefab)
     {
         if (def.Asset != Asset) return;
         ApplyCost(settings);
+        var visual = prefab.GetComponentInChildren<Ships.Parts.Common.Model.Reactions.IShipPartVisual>()?.GameObject.transform;
+        if (visual != null)
+        {
+            foreach (var filter in visual.GetComponentsInChildren<MeshFilter>()) AnchorModel.Mount(filter.transform);
+            Fit(visual, new PierRecord { Kind = AttachmentKind.Pier, HasCollar = true,
+                LocalCap = new PositionD(0, 0, 0), LocalFoot = new PositionD(0, -0.8, 0), LocalFootNormal = new PositionD(0, 1, 0) }, false);
+        }
     }
     private static void FoundationUnlock(ref PartSettings __0)
     {
@@ -73,55 +80,47 @@ internal static class PartRegistration
         return _basicFloor = floor;
     }
 
-    // Keep the leg out of the prefab's bounds: its dimensions belong to this placed pier.
+    // Keep adaptive geometry out of prefab bounds. Every generated collider stays
+    // beneath the native part identity, so the exposed collar uses normal recycling.
     internal static void Fit(Transform root, PierRecord record, bool colliders)
     {
-        var column = root.Find("FoundationColumn");
-        if (column == null)
-        {
-            var item = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            item.name = "FoundationColumn"; item.layer = root.gameObject.layer;
-            if (colliders) item.tag = "ShipFloatingPart";
-            item.transform.SetParent(root, false); column = item.transform;
-            if (!colliders) UnityEngine.Object.Destroy(item.GetComponent<Collider>());
-            var renderer = item.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.enabled = !colliders;
-                if (!colliders) renderer.sharedMaterial = SharedMaterial(ref _columnMaterial, new Color(0.28f, 0.31f, 0.35f));
-            }
-        }
+        var collar = Shape(root, "FoundationCollar", colliders);
+        collar.gameObject.SetActive(record.HasCollar);
+        collar.localPosition = Vector3.up * Policy.CollarHeight;
+        collar.localRotation = Quaternion.identity;
+        collar.localScale = new Vector3(0.7f, Policy.CollarThickness, 0.7f);
+        var column = Shape(root, "FoundationColumn", colliders);
+        var extended = record.Kind == AttachmentKind.Pier;
+        column.gameObject.SetActive(extended);
         var down = Geometry.Vector(record.LocalFoot) - Geometry.Vector(record.LocalCap);
         // The instanced part root already carries the cap's placement transform.
-        column.localPosition = down * 0.5f;
-        column.localRotation = Quaternion.FromToRotation(Vector3.up, down.normalized);
-        column.localScale = new Vector3(0.18f, down.magnitude, 0.18f);
-        var foot = root.Find("FoundationFoot");
-        if (foot == null)
+        if (extended)
         {
-            var item = GameObject.CreatePrimitive(PrimitiveType.Cube); item.name = "FoundationFoot"; item.layer = root.gameObject.layer;
-            if (colliders) item.tag = "ShipFloatingPart";
-            item.transform.SetParent(root, false); foot = item.transform;
-            if (!colliders) UnityEngine.Object.Destroy(item.GetComponent<Collider>());
-            var renderer = item.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.enabled = !colliders;
-                if (!colliders) renderer.sharedMaterial = SharedMaterial(ref _footMaterial, new Color(0.38f, 0.4f, 0.42f));
-            }
+            column.localPosition = down * 0.5f;
+            column.localRotation = Geometry.SurfaceRotation(Quaternion.identity, -down.normalized);
+            column.localScale = new Vector3(0.18f, down.magnitude, 0.18f);
         }
-        foot.localPosition = down; foot.localRotation = Quaternion.FromToRotation(Vector3.up, Geometry.Vector(record.LocalFootNormal));
-        foot.localScale = new Vector3(0.65f, 0.12f, 0.65f);
+        var foot = Shape(root, "FoundationFoot", colliders);
+        foot.gameObject.SetActive(extended);
+        if (extended)
+        {
+            foot.localPosition = down; foot.localRotation = Geometry.SurfaceRotation(Quaternion.identity, Geometry.Vector(record.LocalFootNormal));
+            foot.localScale = new Vector3(0.65f, 0.12f, 0.65f);
+        }
+        AnchorModel.Finish(root, colliders);
     }
-    private static Material SharedMaterial(ref Material? cached, Color color)
+    private static Transform Shape(Transform root, string name, bool colliders)
     {
-        if (cached == null)
-        {
-            var source = ContentAssets.Material("PartMetal") ?? throw new InvalidOperationException("Native foundation material is unavailable.");
-            cached = new Material(source) { color = color, name = "Foundation shared material" };
-            if (cached.HasProperty("_BaseColor")) cached.SetColor("_BaseColor", color);
-            if (cached.HasProperty("_Color")) cached.SetColor("_Color", color);
-        }
-        return cached;
+        var existing = root.Find(name);
+        if (existing != null) return existing;
+        var item = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        item.name = name; item.layer = root.gameObject.layer;
+        item.transform.SetParent(root, false);
+        // Primitive meshes only define the collider/frame. Visible timber is
+        // attached by AnchorModel.Finish; no temporary metal material is needed.
+        item.GetComponent<Renderer>().enabled = false;
+        if (colliders) item.tag = "ShipFloatingPart";
+        else { var collider = item.GetComponent<Collider>(); collider.enabled = false; UnityEngine.Object.Destroy(collider); }
+        return item.transform;
     }
 }

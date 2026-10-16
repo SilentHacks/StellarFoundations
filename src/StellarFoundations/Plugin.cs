@@ -7,15 +7,17 @@ using SDModKit.Configuration;
 using SDModKit.Input;
 using UnityEngine.InputSystem;
 
-[assembly: MelonInfo(typeof(StellarFoundations.Plugin), "Stellar Foundations", "0.1.0", "SilentHacks", null)]
+[assembly: MelonInfo(typeof(StellarFoundations.Plugin), StellarFoundations.Plugin.DisplayName, StellarFoundations.Plugin.Version, "SilentHacks", null)]
 [assembly: MelonGame("CuriousOwlGames", "StellarDrive")]
 [assembly: HarmonyDontPatchAll]
-[assembly: StellarMod("foundations", "Stellar Foundations", Description = "Level piers, existing-build conversion and stationary planetary bases.")]
+[assembly: StellarMod("foundations", StellarFoundations.Plugin.DisplayName, Description = "Ground anchors and adjustable piers for stationary planetary bases.")]
 
 namespace StellarFoundations;
 
 public sealed class Plugin : MelonMod
 {
+    internal const string DisplayName = "StellarFoundations";
+    internal const string Version = "0.5.0";
     internal const string Owner = "silenthacks.stellarfoundations";
     internal static bool Ready;
     internal static string Failure = string.Empty;
@@ -68,9 +70,10 @@ public sealed class Plugin : MelonMod
             RuntimeHooks.Install(harmony);
             FoundationSaving.Install(harmony);
             FoundationTool.Install(harmony);
+            FoundationHud.Install(harmony);
             FoundationNetwork.Initialize();
             Ready = true;
-            LoggerInstance.Msg("Stellar Foundations 0.1.0 ready. Planetary terrain only; matching clients required.");
+            LoggerInstance.Msg(DisplayName + " " + Version + " ready. Matching clients required.");
         }
         catch (Exception error) { harmony.UnpatchSelf(); Fault(error); }
     }
@@ -98,7 +101,7 @@ public sealed class Plugin : MelonMod
     internal static void Fault(Exception error)
     {
         Failure = error.GetBaseException().Message;
-        MelonLogger.Error("Stellar Foundations: " + error);
+        MelonLogger.Error(DisplayName + ": " + error);
         // Already-grounded roots remain controlled by the physics hooks after a runtime fault.
     }
     internal static void LoadFault(Exception error) { Fault(error); _failedLoad = true; }
@@ -108,15 +111,17 @@ public sealed class FoundationMod : SDMod
 {
     internal Keybind HeightModifier = null!;
     public override string Id => "foundations";
-    public override string Name => "Stellar Foundations";
+    public override string Name => Plugin.DisplayName;
     public override bool HostOnly => false;
     public override void OnRegistered()
     {
         HeightModifier = Keybinds.Register(Config, "Controls", "HeightModifier", Key.LeftShift, "Adjust foundation height with scroll");
         AddPage("Foundations", () => {
-            UnityEngine.GUILayout.Label("Select Foundation Pier in the build menu. Scroll rotates; hold " + HeightModifier.Display + " and scroll to adjust height.");
+            UnityEngine.GUILayout.Label("Select Foundation in the build menu. Ground contact and extended piers adapt automatically.");
+            UnityEngine.GUILayout.Label("For new foundations, scroll rotates; hold " + HeightModifier.Display + " and scroll to adjust height.");
             UnityEngine.GUILayout.Label("Hold build to convert an existing structure. Hold the recycler on the last pier to release it.");
             UnityEngine.GUILayout.Label("Foundations support ordinary floors. Existing builds keep their current position and tilt.");
+            UnityEngine.GUILayout.Label("Recycle an anchor at its mounting plate or the floor directly above it. Damage to its attached floor also destroys the anchor.");
             UnityEngine.GUILayout.Label("Grounded bases inhibit their own propulsion and warp; machinery remains active.");
             UnityEngine.GUILayout.Label(FoundationSaving.Status);
             UnityEngine.GUILayout.Label("To stop using Foundations, create a separate save copy with its piers removed. Those structures will use normal ship physics in that copy.");

@@ -1,49 +1,73 @@
-$ErrorActionPreference='Stop'
+param([string]$GameDirectory)
+$ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$dirty=@(& git -C $repo status --porcelain)
-if($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0){throw 'Packaging requires a clean, committed repository.'}
-$head=(& git -C $repo rev-parse HEAD).Trim()
-$manifest=Get-Content -LiteralPath (Join-Path $repo 'mod.json') -Raw | ConvertFrom-Json
-if($manifest.id -ne 'stellarfoundations' -or $manifest.author -ne 'SilentHacks' -or $manifest.dll -ne 'StellarFoundations.dll'){throw 'Unexpected package identity.'}
-$dll=Join-Path $repo 'src\StellarFoundations\bin\Release\net472\StellarFoundations.dll'
-if(!(Test-Path -LiteralPath $dll)){throw 'Build Release output before packaging.'}
-$version=[Reflection.AssemblyName]::GetAssemblyName($dll).Version
-if($version.ToString(3) -ne $manifest.version){throw 'DLL and manifest versions differ.'}
-$info=Join-Path $repo 'src\StellarFoundations\obj\Release\net472\StellarFoundations.AssemblyInfo.cs'
-if(!(Test-Path -LiteralPath $info) -or !(Get-Content -LiteralPath $info -Raw).Contains($head)){throw 'Build this committed revision before packaging; pass -p:SourceRevisionId=<HEAD> if automatic Git metadata is unavailable.'}
-$binaryTime=(Get-Item -LiteralPath $dll).LastWriteTimeUtc
-foreach($source in @(& git -C $repo ls-files 'src/*' 'Directory.Build.props' 'GameReferences.props')){
-    if((Get-Item -LiteralPath (Join-Path $repo $source)).LastWriteTimeUtc -gt $binaryTime){throw ('Build output is older than '+$source)}
+$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$dirty = @(& git -C $repo status --porcelain)
+if ($LASTEXITCODE -ne 0 -or $dirty.Count) { throw 'Packaging requires clean, committed source.' }
+$head = (& git -C $repo rev-parse HEAD).Trim()
+$manifestPath = Join-Path $repo 'mod.json'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($manifest.id -cne 'stellarfoundations' -or $manifest.name -cne 'StellarFoundations' -or
+    $manifest.author -cne 'SilentHacks' -or $manifest.dll -cne 'StellarFoundations.dll' -or
+    $manifest.version -notmatch '^\d+\.\d+\.\d+$' -or [string]::IsNullOrWhiteSpace($manifest.description)) {
+    throw 'Invalid release metadata.'
 }
-$artifacts=[IO.Path]::GetFullPath((Join-Path $repo 'artifacts'))
-New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
-$zip=Join-Path $artifacts ('StellarFoundations-'+$manifest.version+'-'+$head.Substring(0,8)+'.zip')
-if(Test-Path -LiteralPath $zip){throw 'This revision is already packaged.'}
-$stage=Join-Path $artifacts ('.package-'+[Guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path (Join-Path $stage 'docs') | Out-Null
-try{
-    Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'StellarFoundations.dll')
-    foreach($file in @('mod.json','LICENSE','README.md','CHANGELOG.md','CREDITS.md','docs/VALIDATION.md','docs/ARCHITECTURE.md')){
-        Copy-Item -LiteralPath (Join-Path $repo $file) -Destination (Join-Path $stage $file)
-    }
-    $provenance=[ordered]@{version=$manifest.version;commit=$head;dllSha256=(Get-FileHash -LiteralPath $dll).Hash.ToLowerInvariant();author='SilentHacks';game='StellarDrive Demo 0.8.2';runtime='Mono / MelonLoader 0.7.3 / SDModKit 1.3.3'}
-    [IO.File]::WriteAllText((Join-Path $stage 'SOURCE.json'),($provenance | ConvertTo-Json),[Text.UTF8Encoding]::new($false))
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::CreateFromDirectory($stage,$zip,[IO.Compression.CompressionLevel]::Optimal,$false)
-    $archive=[IO.Compression.ZipFile]::OpenRead($zip)
-    try{
-        $expected=@('StellarFoundations.dll','mod.json','LICENSE','README.md','CHANGELOG.md','CREDITS.md','docs/VALIDATION.md','docs/ARCHITECTURE.md','SOURCE.json')
-        $actual=@($archive.Entries | Where-Object Length -gt 0 | ForEach-Object { $_.FullName.Replace('\','/') })
-        if(@(Compare-Object ($expected | Sort-Object) ($actual | Sort-Object)).Count -ne 0){throw 'Unexpected package contents.'}
-        $entry=$archive.Entries | Where-Object FullName -eq 'StellarFoundations.dll'
-        $stream=$entry.Open(); $sha=[Security.Cryptography.SHA256]::Create()
-        try{$hash=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLowerInvariant()}finally{$stream.Dispose();$sha.Dispose()}
-        if($hash -ne $provenance.dllSha256){throw 'Packaged DLL hash differs.'}
-    }finally{$archive.Dispose()}
-    [pscustomobject]@{Package=$zip;Commit=$head;DLLSHA256=$provenance.dllSha256;ZipSHA256=(Get-FileHash -LiteralPath $zip).Hash;VerifiedEntries=9} | ConvertTo-Json
-}finally{
-    $resolved=[IO.Path]::GetFullPath($stage)
-    if(!$resolved.StartsWith($artifacts+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($resolved) -notmatch '^\.package-[a-f0-9]{32}$'){throw 'Unsafe staging cleanup path.'}
-    if(Test-Path -LiteralPath $resolved){Remove-Item -LiteralPath $resolved -Recurse -Force}
+$properties = @('-p:SourceRevisionId=' + $head)
+if ($GameDirectory) { $properties += '-p:GameDirectory=' + $GameDirectory }
+& dotnet build (Join-Path $repo 'StellarFoundations.sln') -c Release --no-incremental @properties --verbosity minimal
+if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
+& dotnet test (Join-Path $repo 'tests/StellarFoundations.Tests/StellarFoundations.Tests.csproj') -c Release --no-build --no-restore --verbosity minimal
+if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
+$dll = Join-Path $repo 'src/StellarFoundations/bin/Release/net472/StellarFoundations.dll'
+if ([Reflection.AssemblyName]::GetAssemblyName($dll).Version.ToString(3) -cne $manifest.version) { throw 'DLL version differs.' }
+$info = Join-Path $repo 'src/StellarFoundations/obj/Release/net472/StellarFoundations.AssemblyInfo.cs'
+if (!(Get-Content -LiteralPath $info -Raw).Contains($head)) { throw 'Source revision missing from build metadata.' }
+if (@(& git -C $repo status --porcelain).Count) { throw 'Source changed during build.' }
+
+$output = Join-Path $repo ('artifacts/' + $manifest.version)
+New-Item -ItemType Directory -Path $output -Force | Out-Null
+$zipPath = Join-Path $output 'StellarFoundations.zip'
+# The manager deploys these paths relative to the game directory. Documentation
+# and media stay in the repository, avoiding collisions with other mods' files.
+$inputs = [ordered]@{ 'Mods/StellarFoundations.dll' = $dll; 'mod.json' = $manifestPath }
+Add-Type -AssemblyName System.IO.Compression
+$stream = [IO.File]::Open($zipPath, [IO.FileMode]::Create, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+try {
+    $archive = [IO.Compression.ZipArchive]::new($stream, [IO.Compression.ZipArchiveMode]::Create, $true)
+    try {
+        foreach ($pair in $inputs.GetEnumerator()) {
+            $entry = $archive.CreateEntry($pair.Key, [IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = [DateTimeOffset]::new(2000, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+            $source = [IO.File]::OpenRead($pair.Value)
+            try { $target = $entry.Open(); try { $source.CopyTo($target) } finally { $target.Dispose() } }
+            finally { $source.Dispose() }
+        }
+    } finally { $archive.Dispose() }
+} finally { $stream.Dispose() }
+
+$stream = [IO.File]::OpenRead($zipPath)
+try {
+    $archive = [IO.Compression.ZipArchive]::new($stream, [IO.Compression.ZipArchiveMode]::Read)
+    try {
+        if ($archive.Entries.Count -ne $inputs.Count) { throw 'Unexpected ZIP entries.' }
+        foreach ($entry in $archive.Entries) {
+            if (!$inputs.Contains($entry.FullName)) { throw ('Unapproved ZIP entry: ' + $entry.FullName) }
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                $source = $entry.Open()
+                try { $actual = [BitConverter]::ToString($sha.ComputeHash($source)).Replace('-', '') }
+                finally { $source.Dispose() }
+            } finally { $sha.Dispose() }
+            if ($actual -cne (Get-FileHash -LiteralPath $inputs[$entry.FullName]).Hash) { throw 'ZIP bytes differ from verified source.' }
+        }
+    } finally { $archive.Dispose() }
+} finally { $stream.Dispose() }
+$hash = (Get-FileHash -LiteralPath $zipPath).Hash
+[IO.File]::WriteAllText((Join-Path $output 'StellarFoundations.sha256'), $hash + '  StellarFoundations.zip' + [Environment]::NewLine)
+$receipt = [ordered]@{
+    Version = $manifest.version; IntendedTag = 'v' + $manifest.version; Commit = $head
+    Archive = 'StellarFoundations.zip'; SHA256 = $hash; DllSHA256 = (Get-FileHash -LiteralPath $dll).Hash
+    Entries = @($inputs.Keys); Runtime = 'Mono / MelonLoader 0.7.3 / SDModKit 1.3.3'
 }
+$receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'verification.json') -Encoding utf8
+$receipt | ConvertTo-Json

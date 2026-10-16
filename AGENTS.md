@@ -1,9 +1,10 @@
-# Stellar Foundations
+# StellarFoundations
 
-- This repository contains the independent Stellar Foundations gameplay mod. Author: SilentHacks.
+- This repository contains the independent StellarFoundations gameplay mod. Author: SilentHacks.
 - Shipping code targets net472. Standalone tests target net9.0; never install Harmony/MonoMod detours in CoreCLR.
 - Game, loader and SDModKit assemblies resolve externally through GameDirectory. Never commit or package them.
 - Keep all private inspection, saves, runtime drivers, screenshots, logs and backups in ../private/foundations-0.1.0.
+- Only curated release screenshots belong in assets/. Do not include private test evidence or user world data in public media.
 - Building, testing and packaging must not deploy or launch the game. Deployment is a separate closed-game action with verified backups.
 - Test only isolated world copies. Do not load, save, replace or modify the real world during validation.
 - Preserve native inventories, floor/room topology, cables, machinery and simulation rates. Grounding changes movement and propulsion intentionally.

@@ -54,7 +54,7 @@ public sealed class PolicyTests
     internal static GroundDocument Document() => new GroundDocument { Structures = new List<GroundRecord> { new GroundRecord
     { Id = Guid.NewGuid().ToString("N"), Ship = 42, Planet = ulong.MaxValue, Position = new PositionD(9000000.123456, 12, -5),
       Rotation = new RotationF(0, 0, 0, 1), Revision = 1, Piers = new List<PierRecord> { new PierRecord
-      { Id = Guid.NewGuid().ToString("N"), Part = 9, LocalCap = new PositionD(2, 3, 4), LocalFoot = new PositionD(2, 1, 4), LocalFootNormal = new PositionD(0, 1, 0), Length = 2 } } } } };
+      { Id = Guid.NewGuid().ToString("N"), Part = 9, LocalCap = new PositionD(2, 3, 4), LocalFoot = new PositionD(2, 1, 4), LocalFootNormal = new PositionD(0, 1, 0), Length = 2, Clearance = 2 } } } } };
 
     [Fact] public void SaveRetainsPlanetIdentityPrecisionAndSupportIdentity()
     {
@@ -73,7 +73,7 @@ public sealed class PolicyTests
         if (fault == "duplicate") ground.Piers.Add(ground.Piers[0]);
         if (fault == "length") ground.Piers[0].Length = 7;
         if (fault == "pose") ground.Position.X = double.NaN;
-        if (fault == "version") document.Format = 2;
+        if (fault == "version") document.Format = 3;
         if (fault == "zero-support") ground.Piers.Clear();
         if (fault == "normal") ground.Piers[0].LocalFootNormal = default;
         if (fault == "inconsistent-length") ground.Piers[0].Length = 1;

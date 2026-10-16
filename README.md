@@ -1,98 +1,75 @@
-# Stellar Foundations
+# StellarFoundations
 
-An independent gameplay mod by **SilentHacks** for the inspected StellarDrive Demo
-0.8.2 Mono build. Version 0.1.0 is a local preview, not a published release.
+Build a base that stays put. Add timber foundations to a new build, or anchor an
+existing structure without rebuilding it or moving its contents.
 
-Foundation piers hold a native structure in a fixed position relative to its planet.
-New construction gets a level grid; converting an existing build preserves its
-position and tilt. Native floors, inventories, cables, rooms and machinery stay in
-their original entity.
+![Timber foundation placed on planetary terrain](https://raw.githubusercontent.com/SilentHacks/StellarFoundations/main/assets/thumbnail.png)
 
-## Playing
+- Ground-contact anchors and adjustable piers up to six metres tall.
+- Level starting grids for new bases. Existing builds keep their position and tilt.
+- Native floors, rooms, inventories, cables and machinery remain in place.
+- Native build costs, holograms and tool controls, with short confirmation holds
+  when anchoring a structure or removing its last support.
+- Multiple supports, ordinary recycling and a separate-save export for uninstalling.
 
-Requires MelonLoader 0.7.3, SDModKit 1.3.3 and matching Foundations installations on
-the host and clients. StellarPerformance and StellarWorkshop are optional. Game
-assembly identities are checked at startup; unsupported updates need revalidation.
+## Requirements
 
-1. Select **Foundation Pier**, next to Wood Floor in the build menu. It unlocks
-   with the basic wooden floor and costs twice that floor's recipe (currently four
-   wood). There is no power, fuel or maintenance cost for grounding.
-2. Aim at planetary terrain. Scroll changes heading; **Shift + scroll** changes
-   height. The modifier can be rebound in the mod settings. The foot needs a
-   continuous terrain surface within six metres. Place the pier, then place an
-   ordinary floor on its mounting plate and continue normal construction.
-3. To convert an existing structure, aim at an ordinary floor with the pier
-   selected. The outline identifies the whole entity being converted. Undock
-   visiting ships, stop movement and rotation, then hold build to confirm. The
-   mounting plate follows the existing floor; conversion does not level the build.
-4. Additional piers provide redundancy. Use the recycler to remove a pier. The
-   last pier requires a warning hold; losing the final pier through native damage
-   releases the structure at the next physics boundary.
+**StellarDrive Demo 0.8.2**, **MelonLoader 0.7.3** and **SDModKit 1.3.3**.
+Other game or dependency builds are not supported. StellarPerformance,
+StellarWorkshop and Build Plus are optional.
 
-Grounded structures remain collidable and damageable. Their own thrusters,
-reaction wheels, pilot-seat gyros and gyroscopes are inhibited. Their propulsion
-does not consume fuel or gyro power while inhibited. Rotors and production
-machinery continue operating. A docked assembly cannot warp. A visiting ship can
-dock and undock normally, but cannot connect two independently grounded bases.
+**0.5.0 is a preview.** Single-player interactions and saves have been tested on
+isolated worlds. Remote co-op is not yet qualified. Multiplayer requires the same
+version on the host and every client. See [validation](docs/VALIDATION.md).
 
-One surviving pier holds the whole native entity. This version does not introduce
-new structural integrity, load limits or arbitrary hull-fragment splitting. It
-supports planetary terrain rather than asteroids, orbiting stations or a rotor's
-moving section. Piers cannot be picked up or copied into valid ground attachments;
-place a new validated pier instead. Terrain streaming and LOD changes do not
-release a saved base. Compatibility with terrain-deformation mods is unqualified.
+## Install
 
-## Saves and removing the mod
+Use Stellar Mod Manager, or download **StellarFoundations.zip** from the release
+and extract it into the game folder. The DLL belongs at
+`Mods/StellarFoundations.dll`. Install the requirements separately.
 
-Back up the **whole world directory**, including `sdmodkit-content.json`. Native
-world data and the foundation sidecar are saved as a recoverable pair. Keep
-`.stellarfoundations-save` if recovery files are present. Paired automatic-backup
-metadata lives in `.stellarfoundations-backups` beside the native backups.
+Close the game before changing mod files. Back up the whole world directory
+before first use or upgrading, including `sdmodkit-content.json` and hidden files.
 
-Never remove the DLL from a world that still contains piers. In the Foundations
-settings page, choose **Save a separate copy without Foundations**. This first
-saves the current world, then creates a separate save with piers and grounding
-metadata removed. Its structures use ordinary ship physics. The original retains
-its foundations. Add a normal floor to an otherwise empty pier, or recycle that
-pier, before exporting.
+## Build and anchor
 
-If world and metadata hashes disagree, loading stops before ship physics and
-returns to the menu with an error. Restore the matching pair rather than editing
-the hash. This protection requires the mod to remain installed.
+Select **Foundation** next to **Floor** in **Hull (Wood)**. It unlocks with the
+wooden floor and currently costs **4 wood**.
 
-Start with an isolated world copy. Automated validation covered a copied
-5,556-part structure and actual local multiplayer transport, but does not replace
-a manual co-op playtest. No FPS improvement is claimed: this removes base movement
-and associated root-force work, while rendering, room simulation and production
-work remain native.
+**Start a base:** aim at terrain, scroll to rotate and use **Shift + scroll** to
+adjust height. Place the foundation, then build an ordinary floor on its top plate.
+The height modifier can be rebound in the mod settings.
 
-## Building and testing
+**Anchor an existing build:** aim at an ordinary floor and hold build for
+**0.8 seconds**. The outline shows the entire structure that will be anchored.
+Undock visiting ships and stop the structure first. The floor must touch terrain
+or have clear ground within six metres below it. The anchor adapts to the gap.
 
-Install .NET SDK 9.0.101. Game, loader and SDModKit assemblies are resolved from the
-installed game and are never distributed. Set `GameDirectory` with an MSBuild
-property, `STELLARDRIVE_GAME_DIRECTORY`, or an ignored
-`Directory.Build.local.props` file if the default Steam path differs.
+**Remove a support:** aim the recycler at its plate or the mounting spot on the
+floor above it. Empty foundations and redundant supports recycle normally.
+Removing the final support of a built structure takes a **0.8 second hold** and
+releases it to normal physics. The floor remains in place.
 
-```powershell
-dotnet build StellarFoundations.sln -c Release
-dotnet test tests/StellarFoundations.Tests/StellarFoundations.Tests.csproj -c Release
-```
+Grounded bases remain collidable and damageable. Their own movement, propulsion
+and warp are stopped; production machinery and rotors keep working. Damage that
+destroys an anchor's attached floor also removes that anchor. Losing every support
+releases the structure. Anchors support planetary terrain, not asteroids or moving
+rotor sections. No performance improvement is promised.
 
-Shipping code targets net472; tests target net9.0. Tests exercise managed policy,
-save recovery, export transformations and inspected native contracts without
-installing runtime detours in CoreCLR. Runtime drivers, saves, logs and screenshots
-remain outside this repository. See [validation](docs/VALIDATION.md) for evidence
-and limitations.
+## Saves and uninstalling
 
-Packaging is separate from building and deployment:
+Keep the mod installed while a world contains foundations. To remove it, use
+**Foundations > Save a separate copy without Foundations** in the mod settings.
+The exported copy has ordinary ship physics; the original world keeps its anchors.
+Add a floor to any otherwise empty starter foundation, or recycle it, before export.
 
-```powershell
-./scripts/Package.ps1
-```
+Native world data and foundation metadata are saved as a recoverable pair. Keep
+them together, including `.stellarfoundations-save` and
+`.stellarfoundations-backups` when present. If loading reports a mismatch, restore
+a complete matching backup instead of editing the files.
 
-The script requires clean committed source and matching Release build output. It
-creates a local ZIP in ignored `artifacts/`; it does not install, launch, publish
-or upload anything. Install only `StellarFoundations.dll` into the game's `Mods`
-folder while the game is closed, after taking a complete save backup.
+## Development
 
-MIT licensed. No game, loader or SDModKit assemblies are included.
+Source code is MIT licensed. Game artwork belongs to CuriousOwlGames.
+See [credits](CREDITS.md), [architecture and build instructions](docs/ARCHITECTURE.md),
+[validation](docs/VALIDATION.md) and [changes](CHANGELOG.md).

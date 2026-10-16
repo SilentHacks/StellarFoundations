@@ -8,6 +8,8 @@ using Ships.Interface.Model.Placement;
 using Ships.Interface.Services;
 using Ships.Physics;
 using Xunit;
+using Tools.Common.Hover;
+using Tools.Recycler;
 
 namespace StellarFoundations;
 
@@ -18,6 +20,7 @@ public sealed class NativeContractTests
     [Theory]
     [InlineData("RpcLogic___PlaceFloatingPart_ServerRPC___2366367339", "GuardNativePlacement")]
     [InlineData("RpcLogic___RemoveFloatingPart_ServerRPC___1471205784", "GuardNativeRemoval")]
+    [InlineData("RpcLogic___RemoveHullPart_ServerRPC___930806135", "GuardHullRemoval")]
     [InlineData("RpcLogic___PickUpPart_ServerRPC___2228377996", "GuardPickup")]
     [InlineData("RpcLogic___ConfirmRepositionShip_ServerRPC___2616489143", "GuardReposition")]
     [InlineData("RpcLogic___StartRepositionShip_ServerRPC___328543758", "GuardStartReposition")]
@@ -50,7 +53,7 @@ public sealed class NativeContractTests
 
     [Fact] public void CommandWireRoundTripIsBoundedAndCannotSelectAnActingPlayer()
     {
-        var command = new FoundationCommand { Version = 1, Sequence = uint.MaxValue, Action = CommandAction.Attach, Ship = 42, Space = 84, Revision = 12, Part = ushort.MaxValue,
+        var command = new FoundationCommand { Version = Policy.Protocol, Sequence = uint.MaxValue, Action = CommandAction.Attach, Ship = 42, Space = 84, Revision = 12, Part = ushort.MaxValue,
             Position = new PositionD(9999999.123456789, -0.55, 71), Rotation = new RotationF(0, 0, 0, 1) };
         var writer = new Writer(); FoundationNetwork.WriteCommand(writer, command);
         Assert.Equal(61, writer.Length);
@@ -62,4 +65,15 @@ public sealed class NativeContractTests
 
     [Fact] public void TruncatedCommandsCannotReadPastTheirPacket() =>
         Assert.Throws<FormatException>(() => FoundationNetwork.ReadCommand(new Reader(new byte[60], null)));
+
+    [Fact]
+    public void RecyclerAdapterBindsTheNativeHeldInputAndHoveredObject()
+    {
+        Assert.Equal(typeof(bool), Compatibility.Field(typeof(RecyclerTool), "_isRecycling").FieldType);
+        Assert.Equal(typeof(IHoveredObject), Compatibility.Field(typeof(RecyclerTool), "hoveredObject").FieldType);
+        Assert.Equal(typeof(HullPartPosition), Compatibility.Field(typeof(HullHover), "_hullPartPosition").FieldType);
+        Assert.Equal(typeof(Ships.Interface.Services.IShipPartTargeter), Compatibility.Field(typeof(HullHover), "_currentShip").FieldType);
+        foreach (var name in new[] { "PrimaryActionBegin", "PrimaryActionEnd", "DisableTool", "UpdateChecks", "UpdateAutoRecycle" })
+            Assert.Equal(typeof(void), Compatibility.Method(typeof(RecyclerTool), name).ReturnType);
+    }
 }

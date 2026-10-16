@@ -37,7 +37,16 @@ internal struct FoundationCommand : IBroadcast
     public PositionD Position;
     public RotationF Rotation;
 }
-internal struct FoundationReply : IBroadcast { public uint Sequence; public bool Success; public string Message; }
+internal struct FoundationReply : IBroadcast
+{
+    public uint Sequence;
+    public bool Success;
+    public string Message;
+    public FoundationPhase Phase;
+    public float Progress, Duration;
+    public int Supports;
+    public bool ReleaseRequired;
+}
 internal struct FoundationSnapshot : IBroadcast { public ushort Version, Index, Total; public uint Generation; public string Chunk; }
 
 internal static class FoundationNetwork
@@ -54,6 +63,10 @@ internal static class FoundationNetwork
         internal uint Generation;
         internal uint TargetShip;
         internal float TargetRadius;
+        internal FoundationPhase Phase;
+        internal float Progress, Duration;
+        internal int Supports;
+        internal bool ReleaseRequired;
     }
     private static readonly Dictionary<NetworkConnection, Session> Sessions = new Dictionary<NetworkConnection, Session>(new Identity());
     private static NetworkManager? _manager;
@@ -155,12 +168,13 @@ internal static class FoundationNetwork
         _manager = null; Sessions.Clear(); _sentHello = _clientReady = false; _chunks = null; ConnectionError = "";
     }
     internal static void WorldExit() => Unbind();
-    internal static void Send(FoundationCommand request)
+    internal static uint Send(FoundationCommand request)
     {
         EnsureNetwork();
-        if (_manager == null || !_manager.ClientManager.Started) return;
+        if (_manager == null || !_manager.ClientManager.Started) return 0;
         request.Version = Policy.Protocol; request.Sequence = ++_sequence;
         _manager.ClientManager.Broadcast(request, Channel.Reliable);
+        return request.Sequence;
     }
     private static void ReceiveCommand(NetworkConnection sender, FoundationCommand command, Channel channel)
     {
@@ -189,17 +203,20 @@ internal static class FoundationNetwork
             if (command.Action == CommandAction.Cancel) { session.Hold.Reset(); session.Selection = ""; session.TargetShip = 0; return; }
             if (FoundationSaving.Busy || Plugin.Failure.Length != 0) { session.Hold.Reset(); session.Selection = ""; session.TargetShip = 0; Reply(sender, command, false, "Wait for saving or resolve the Foundations error first."); return; }
             var message = Execute(player, session, command, out var success);
-            Reply(sender, command, success, message);
+            Reply(sender, command, success, message, session);
         }
         catch (Exception error) { Plugin.Fault(error); Reply(sender, command, false, "Foundation action failed; check the loader log before continuing."); }
     }
-    private static void Reply(NetworkConnection sender, FoundationCommand command, bool success, string message) =>
-        _manager!.ServerManager.Broadcast(sender, new FoundationReply { Sequence = command.Sequence, Success = success, Message = message }, requireAuthenticated: false, channel: Channel.Reliable);
-    private static void ReceiveReply(FoundationReply reply, Channel channel) => FoundationTool.Result(reply.Success, reply.Message);
+    private static void Reply(NetworkConnection sender, FoundationCommand command, bool success, string message, Session? session = null) =>
+        _manager!.ServerManager.Broadcast(sender, new FoundationReply { Sequence = command.Sequence, Success = success, Message = message,
+            Phase = session?.Phase ?? FoundationPhase.Blocked, Progress = session?.Progress ?? 0,
+            Duration = session?.Duration ?? 0, Supports = session?.Supports ?? 0, ReleaseRequired = session?.ReleaseRequired ?? false }, requireAuthenticated: false, channel: Channel.Reliable);
+    private static void ReceiveReply(FoundationReply reply, Channel channel) => FoundationTool.Result(reply);
 
     private static string Execute(TrackedPlayerServer player, Session session, FoundationCommand command, out bool success)
     {
         success = false;
+        session.Phase = FoundationPhase.Blocked; session.Progress = session.Duration = 0; session.Supports = 0; session.ReleaseRequired = false;
         if (player.StateVal != Players.Interface.Model.PlayerStateType.Walking && player.StateVal != Players.Interface.Model.PlayerStateType.CheatFlying)
         { session.Hold.Reset(); return "Leave the seat or current interaction before building or recycling a foundation."; }
         if (command.Action == CommandAction.Remove)
@@ -210,18 +227,32 @@ internal static class FoundationNetwork
                 || !ship.TryGetStatefulPart(command.Part, out var part)) { session.Hold.Reset(); return "Foundation changed; aim again."; }
             if (!Geometry.InReach(player, ship.RelativeSpaceId, part.LocalPosition)) { session.Hold.Reset(); return "Foundation is out of recycler reach."; }
             session.TargetShip = ship.Id;
-            if (ground.Piers.Count == 1 && !session.Hold.Observe("remove:" + ship.Id + ":" + part.Id, ground.Revision, Now, true, Policy.ReleaseHoldSeconds))
-                return "LAST FOUNDATION: keep holding the recycler to release this structure. Active propulsion inputs will become effective.";
+            session.Supports = ground.Piers.Count;
+            var hasPayload = ship.PartCount > ground.Piers.Count;
+            session.ReleaseRequired = RemovalPolicy.NeedsHold(ground.Piers.Count, ship.PartCount);
+            if (session.ReleaseRequired && !session.Hold.Observe("remove:" + ship.Id + ":" + part.Id, ground.Revision, Now, true, Policy.ReleaseHoldSeconds))
+            {
+                session.Phase = FoundationPhase.Releasing; session.Duration = (float)Policy.ReleaseHoldSeconds;
+                session.Progress = session.Hold.Fraction(Now, Policy.ReleaseHoldSeconds);
+                return FoundationPrompt.ReleaseWarning;
+            }
             var refund = player.IsUsingCheatFreeBuild ? null : part.Settings.BuildingCost;
             FoundationRegistry.Mutation = true;
             try { ship.RemoveStatefulPart(part.Id); }
             finally { FoundationRegistry.Mutation = false; }
             if (refund != null) player.AddItemsToInventory(refund);
             session.Hold.Reset(); success = true;
-            return ground.Piers.Count == 0 ? "Foundation removed. Structure released." : "Foundation removed. Remaining supports keep the structure grounded.";
+            session.Supports = ground.Piers.Count;
+            session.Phase = ground.Piers.Count == 0 && hasPayload ? FoundationPhase.Released : FoundationPhase.Recycled;
+            return ground.Piers.Count == 0 ? hasPayload ? "The structure is free to move." : "" : FoundationPrompt.SupportLabel(ground.Piers.Count) + " remaining";
         }
         if (command.Action != CommandAction.New && command.Action != CommandAction.Attach) return "Unsupported foundation action.";
-        if (!Geometry.Validate(command, player, out var placement, out var reason)) { session.Hold.Reset(); session.Selection = ""; return reason; }
+        if (!Geometry.Validate(command, player, out var placement, out var reason))
+        { session.Hold.Reset(); session.Selection = ""; session.Phase = placement.PendingTerrain ? FoundationPhase.TerrainLoading : FoundationPhase.Blocked; return reason; }
+        PartRegistration.EnsureCost();
+        var cost = PartRegistration.Settings.BuildingCost;
+        if (!player.IsUsingCheatFreeBuild && !player.HasItemsInInventory(cost))
+        { session.Phase = FoundationPhase.Materials; return ""; }
         if (placement.Ship != null)
         {
             var ship = placement.Ship;
@@ -234,17 +265,25 @@ internal static class FoundationNetwork
                 var eligible = Policy.Still(ship.PhysicsState.Velocity.magnitude, body.AngularVelocity.magnitude, radius);
                 var selection = ship.Id + ":" + command.Position.X + ":" + command.Position.Y + ":" + command.Position.Z;
                 if (!eligible || session.Selection != selection) { session.Selection = selection; session.StillSince = Now; session.Hold.Reset(); }
-                if (!eligible || Now - session.StillSince < Policy.StillSeconds) return "Keep the structure still, including rotation.";
-                if (!session.Hold.Observe(selection, command.Revision, Now, true, Policy.ConvertHoldSeconds)) return "Keep holding to ground this entire structure. Its position and tilt will be preserved.";
+                if (!eligible)
+                { session.Phase = FoundationPhase.Settling; return "Structure is moving."; }
+                // The same stationary observations satisfy both gates. Do not add
+                // a second waiting period before starting the player's hold.
+                var confirmed = session.Hold.Observe(selection, command.Revision, Now, true, Policy.ConvertHoldSeconds);
+                if (Now - session.StillSince < Policy.StillSeconds || !confirmed)
+                {
+                    session.Phase = FoundationPhase.Anchoring; session.Duration = (float)Policy.ConvertHoldSeconds;
+                    session.Progress = session.Hold.Fraction(Now, Policy.ConvertHoldSeconds);
+                    return "The entire structure will stay in its current position.";
+                }
             }
         }
-        PartRegistration.EnsureCost();
-        var cost = PartRegistration.Settings.BuildingCost;
-        if (!player.IsUsingCheatFreeBuild && !player.HasItemsInInventory(cost)) return "Not enough materials for the foundation.";
         FoundationTransactions.Place(placement);
         if (!player.IsUsingCheatFreeBuild) player.RemoveItemsFromInventory(cost);
         session.Hold.Reset(); session.Selection = ""; success = true;
-        return "Foundation attached. Structure grounded.";
+        session.Phase = FoundationPhase.Success;
+        session.Supports = placement.Ship == null ? 1 : FoundationRegistry.Get(placement.Ship.Id)?.Piers.Count ?? 1;
+        return FoundationPrompt.SupportLabel(session.Supports);
     }
 
     internal static void Publish()
@@ -310,8 +349,22 @@ internal static class FoundationNetwork
         if (command.Action > CommandAction.Cancel) throw new FormatException("Unknown foundation command.");
         return command;
     }
-    private static void WriteReply(Writer writer, FoundationReply value) { writer.WriteUInt32Unpacked(value.Sequence); writer.WriteBoolean(value.Success); writer.WriteString(value.Message); }
-    private static FoundationReply ReadReply(Reader reader) => new FoundationReply { Sequence = reader.ReadUInt32Unpacked(), Success = reader.ReadBoolean(), Message = reader.ReadStringAllocated() };
+    internal static void WriteReply(Writer writer, FoundationReply value)
+    {
+        writer.WriteUInt32Unpacked(value.Sequence); writer.WriteBoolean(value.Success); writer.WriteString(value.Message);
+        writer.WriteUInt8Unpacked((byte)value.Phase); writer.WriteSingle(value.Progress); writer.WriteSingle(value.Duration); writer.WriteInt32Unpacked(value.Supports); writer.WriteBoolean(value.ReleaseRequired);
+    }
+    internal static FoundationReply ReadReply(Reader reader)
+    {
+        var value = new FoundationReply { Sequence = reader.ReadUInt32Unpacked(), Success = reader.ReadBoolean(), Message = reader.ReadStringAllocated() };
+        if (reader.Remaining < 14) throw new FormatException("Truncated foundation feedback.");
+        value.Phase = (FoundationPhase)reader.ReadUInt8Unpacked(); value.Progress = reader.ReadSingle(); value.Duration = reader.ReadSingle(); value.Supports = reader.ReadInt32Unpacked();
+        value.ReleaseRequired = reader.ReadBoolean();
+        if (value.Phase > FoundationPhase.Materials || !Policy.Finite(value.Progress) || value.Progress < 0 || value.Progress > 1
+            || !Policy.Finite(value.Duration) || value.Duration < 0 || value.Duration > 10 || value.Supports < 0 || value.Supports > Policy.MaximumPiersPerStructure)
+            throw new FormatException("Invalid foundation feedback.");
+        return value;
+    }
     private static void WriteSnapshot(Writer writer, FoundationSnapshot value) { writer.WriteUInt16Unpacked(value.Version); writer.WriteUInt16Unpacked(value.Index); writer.WriteUInt16Unpacked(value.Total); writer.WriteUInt32Unpacked(value.Generation); writer.WriteString(value.Chunk); }
     private static FoundationSnapshot ReadSnapshot(Reader reader) => new FoundationSnapshot { Version = reader.ReadUInt16Unpacked(), Index = reader.ReadUInt16Unpacked(), Total = reader.ReadUInt16Unpacked(), Generation = reader.ReadUInt32Unpacked(), Chunk = reader.ReadStringAllocated() };
 }
