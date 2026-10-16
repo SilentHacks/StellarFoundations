@@ -4,6 +4,5 @@
   "version": "0.5.0",
   "author": "SilentHacks",
   "description": "Build stationary planetary bases with ground anchors and adjustable timber piers. Start a new base or anchor an existing structure without rebuilding it.\n\nPreview for StellarDrive Demo 0.8.2. Requires MelonLoader 0.7.3 and SDModKit 1.3.3. Remote co-op is not yet qualified; multiplayer requires matching versions.",
-  "thumbnail": "assets/thumbnail.png",
-  "dll": "StellarFoundations.dll"
+  "thumbnail": "assets/thumbnail.png"
 }
