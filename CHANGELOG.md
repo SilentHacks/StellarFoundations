@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- Declare SDModKit and Sandbox Menu dependencies for Stellar Mod Manager.
+- Rewrite the manager description, release notes and README for easier reading.
+- Align packaging validation with the upstream manifest, which no longer includes a DLL field.
+- Keep the existing gameplay, save format and preview limitations.
+
 ## 0.5.0
 
 First public preview of StellarFoundations, following the local 0.1 to 0.4 previews.

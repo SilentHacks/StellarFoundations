@@ -8,7 +8,7 @@ $head = (& git -C $repo rev-parse HEAD).Trim()
 $manifestPath = Join-Path $repo 'mod.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.id -cne 'stellarfoundations' -or $manifest.name -cne 'StellarFoundations' -or
-    $manifest.author -cne 'SilentHacks' -or $manifest.dll -cne 'StellarFoundations.dll' -or
+    $manifest.author -cne 'SilentHacks' -or
     $manifest.version -notmatch '^\d+\.\d+\.\d+$' -or [string]::IsNullOrWhiteSpace($manifest.description)) {
     throw 'Invalid release metadata.'
 }

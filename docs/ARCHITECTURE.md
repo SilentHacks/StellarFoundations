@@ -118,7 +118,7 @@ Commit the final source on `main`, then run:
 ```
 
 The script requires a clean checkout, builds/tests that revision, checks release
-identity and produces `artifacts/0.5.0/StellarFoundations.zip`. Release builds map
+identity and produces `artifacts/<version>/StellarFoundations.zip`. Release builds map
 checkout paths to a stable prefix so the same source can produce identical bytes
 from another directory. ZIP entries are
 `Mods/StellarFoundations.dll` and root `mod.json`, matching the manager's deployment
@@ -127,7 +127,7 @@ release notes, media and developer docs stay in the repository. Deterministic en
 timestamps and a byte-for-byte verification produce a checksum and provenance
 receipt beside the ZIP. Packaging does not deploy, launch or publish.
 
-Public distribution requires a public repository, `main/mod.json`, tag `v0.5.0`
+Public distribution requires a public repository, `main/mod.json`, tag `v<version>`
 and release asset `StellarFoundations.zip`. Use `RELEASE_NOTES.md` for the release
 body and mark this version as a preview. The manifest's `thumbnail` is relative to
 the repository root. Catalog inclusion also requires the mod manager's registry
