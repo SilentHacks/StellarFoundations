@@ -3,7 +3,7 @@
   "name": "StellarFoundations",
   "version": "0.6.1",
   "author": "SilentHacks",
-  "description": "Build planetary bases that stay put.\n\n• Start a level base on timber piers\n• Anchor existing builds in place\n• Adjust supports up to six metres\n• Keep floors, rooms and machinery\n\nPreview: remote co-op is not yet qualified. Multiplayer needs matching versions.\n\nRequires Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3 and Sandbox Menu.",
+  "description": "Build planetary bases that stay put.\n\n• Start a level base on timber piers\n• Anchor existing builds in place\n• Adjust supports up to six metres\n• Keep floors, rooms and machinery\n\nRequires Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3 and Sandbox Menu.",
   "needs": ["sdmodkit", "sandbox_menu"],
   "thumbnail": "assets/thumbnail.png"
 }

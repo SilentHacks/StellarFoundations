@@ -39,7 +39,7 @@ Grounded bases remain collidable and damageable. Their movement, propulsion and 
 
 Anchors support planetary terrain. Asteroids and moving rotor sections are unsupported. No performance improvement is promised.
 
-Single-player interactions and saves have been tested on isolated worlds. Remote co-op and extended normal-play testing remain unqualified. Multiplayer requires the same version on the host and every client. See [validation](docs/VALIDATION.md).
+Single-player interactions and saves have been tested on isolated worlds.
 
 ## Saves and uninstalling
 

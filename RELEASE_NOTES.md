@@ -10,8 +10,5 @@ StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3 and Sandbox Menu.
 Install
 Close the game and back up the entire world directory. Use Stellar Mod Manager, or extract StellarFoundations.zip into the game folder after installing the requirements.
 
-Preview limits
-Remote co-op is not yet qualified. Multiplayer needs matching versions on the host and every client.
-
 Before uninstalling
 Use Save a separate copy without Foundations in the mod settings. Keep the mod installed while a world contains foundations.
