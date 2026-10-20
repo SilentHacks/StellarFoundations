@@ -1,11 +1,11 @@
 Dependency and presentation update · Preview
 
-• Declares SDModKit and Sandbox Menu dependencies.
+• Requires SDModKit only. Sandbox Menu is not required.
 • Shorter mod-manager description and clearer setup instructions.
 • Same foundation gameplay and save format as 0.5.0.
 
 Requirements
-StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3 and Sandbox Menu.
+StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3.
 
 Install
 Close the game and back up the entire world directory. Use Stellar Mod Manager, or extract StellarFoundations.zip into the game folder after installing the requirements.

@@ -24,7 +24,7 @@ public sealed class ReleaseContractTests
         var content = JObject.Parse(PartRegistration.Definition);
         var project = XDocument.Load(Path.Combine(root, "src/StellarFoundations/StellarFoundations.csproj"));
         Assert.Equal("stellarfoundations", manifest.Value<string>("id"));
-        Assert.Equal(new[] { "sdmodkit", "sandbox_menu" }, manifest["needs"]!.ToObject<string[]>());
+        Assert.Equal(new[] { "sdmodkit" }, manifest["needs"]!.ToObject<string[]>());
         Assert.Equal("StellarFoundations", manifest.Value<string>("name"));
         Assert.Equal(Plugin.DisplayName, content.Value<string>("name"));
         Assert.Equal(Plugin.Version, manifest.Value<string>("version"));

@@ -15,9 +15,9 @@ Version 0.6.1 is a preview. This update improves mod-manager dependencies and pr
 
 ## Install
 
-Requires StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3 and Sandbox Menu. Other game or SDModKit builds are unsupported. StellarPerformance, StellarWorkshop and Build Plus are optional.
+Requires StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3. Sandbox Menu is not required. Other game or SDModKit builds are unsupported. StellarPerformance, StellarWorkshop and Build Plus are optional.
 
-Install through Stellar Mod Manager. The manifest declares SDModKit and Sandbox Menu as dependencies.
+Install through Stellar Mod Manager. The manifest declares SDModKit as its only required mod dependency.
 
 For manual installation, close the game and install the requirements separately. Download StellarFoundations.zip from the [0.6.1 release](https://github.com/SilentHacks/StellarFoundations/releases/tag/v0.6.1) and extract it into the game folder. The DLL belongs at Mods/StellarFoundations.dll.
 
