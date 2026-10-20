@@ -2,7 +2,7 @@
 
 ## 0.6.1
 
-- Declare SDModKit as the only required mod dependency; Sandbox Menu is not required.
+- Fix unnecessary dependency prompts in Stellar Mod Manager.
 - Rewrite the manager description, release notes and README for easier reading.
 - Align packaging validation with the upstream manifest, which no longer includes a DLL field.
 - Keep the existing gameplay, save format and preview limitations.

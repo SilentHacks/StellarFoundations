@@ -1,14 +1,10 @@
-Dependency and presentation update · Preview
-
-• Requires SDModKit only. Sandbox Menu is not required.
-• Shorter mod-manager description and clearer setup instructions.
-• Same foundation gameplay and save format as 0.5.0.
+Fixed unnecessary dependency prompts in Stellar Mod Manager.
 
 Requirements
-StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3.
+StellarDrive Demo 0.8.2, MelonLoader 0.7.3 and SDModKit 1.3.3.
 
 Install
-Close the game and back up the entire world directory. Use Stellar Mod Manager, or extract StellarFoundations.zip into the game folder after installing the requirements.
+Back up your world, then install through Stellar Mod Manager. For manual installation, close the game and extract StellarFoundations.zip into the game folder.
 
-Before uninstalling
-Use Save a separate copy without Foundations in the mod settings. Keep the mod installed while a world contains foundations.
+Uninstall
+Choose Save a separate copy without Foundations in the mod settings before removing the mod.

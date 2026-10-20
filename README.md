@@ -2,8 +2,6 @@
 
 Build planetary bases that stay put. Start a level base on timber piers, or anchor an existing build without moving its contents.
 
-Version 0.6.1 is a preview. This update improves mod-manager dependencies and presentation; gameplay and save formats are unchanged.
-
 ## Features
 
 - Ground-contact anchors and adjustable piers up to six metres tall.
@@ -15,9 +13,9 @@ Version 0.6.1 is a preview. This update improves mod-manager dependencies and pr
 
 ## Install
 
-Requires StellarDrive Demo 0.8.2, MelonLoader 0.7.3, SDModKit 1.3.3. Sandbox Menu is not required. Other game or SDModKit builds are unsupported. StellarPerformance, StellarWorkshop and Build Plus are optional.
+Requires StellarDrive Demo 0.8.2, MelonLoader 0.7.3 and SDModKit 1.3.3.
 
-Install through Stellar Mod Manager. The manifest declares SDModKit as its only required mod dependency.
+Install through Stellar Mod Manager.
 
 For manual installation, close the game and install the requirements separately. Download StellarFoundations.zip from the [0.6.1 release](https://github.com/SilentHacks/StellarFoundations/releases/tag/v0.6.1) and extract it into the game folder. The DLL belongs at Mods/StellarFoundations.dll.
 
@@ -33,13 +31,11 @@ To anchor an existing build, aim at an ordinary floor and hold build for 0.8 sec
 
 To remove a support, aim the recycler at its plate or the floor mounting spot above it. Empty foundations and redundant supports recycle normally. Removing the final support of a built structure takes a 0.8 second hold and restores normal physics. The floor stays in place.
 
-## Behaviour and preview limits
+## Base behaviour
 
 Grounded bases remain collidable and damageable. Their movement, propulsion and warp are stopped; production machinery and rotors keep working. Losing every support releases the structure. Destroying an anchor's attached floor also removes that anchor.
 
-Anchors support planetary terrain. Asteroids and moving rotor sections are unsupported. No performance improvement is promised.
-
-Single-player interactions and saves have been tested on isolated worlds.
+Anchors support planetary terrain. Asteroids and moving rotor sections are unsupported.
 
 ## Saves and uninstalling
 
