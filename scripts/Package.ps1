@@ -12,6 +12,17 @@ if ($manifest.id -cne 'stellarfoundations' -or $manifest.name -cne 'StellarFound
     $manifest.version -notmatch '^\d+\.\d+\.\d+$' -or [string]::IsNullOrWhiteSpace($manifest.description)) {
     throw 'Invalid release metadata.'
 }
+if (@('ai-free', 'ai-assisted', 'vibecoded') -cnotcontains $manifest.ai) { throw 'Invalid AI disclosure.' }
+if (@('active', 'inactive') -cnotcontains $manifest.development) { throw 'Invalid development status.' }
+if ($manifest.description.Length -gt 600) { throw 'Keep the manager description within 600 characters.' }
+$tagsProperty = $manifest.PSObject.Properties['tags']
+if ($null -ne $tagsProperty) {
+    $tags = @($tagsProperty.Value)
+    if ($tags.Count -gt 6) { throw 'Use at most six manager tags.' }
+    foreach ($tag in $tags) {
+        if ([string]::IsNullOrWhiteSpace($tag) -or $tag.Length -gt 24 -or @('ai', 'ai-free', 'ai-assisted', 'vibecoded', 'active', 'inactive') -contains $tag) { throw 'Invalid or reserved manager tag.' }
+    }
+}
 $properties = @('-p:SourceRevisionId=' + $head)
 if ($GameDirectory) { $properties += '-p:GameDirectory=' + $GameDirectory }
 & dotnet build (Join-Path $repo 'StellarFoundations.sln') -c Release --no-incremental @properties --verbosity minimal

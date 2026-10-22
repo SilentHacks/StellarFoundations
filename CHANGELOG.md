@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased (listing metadata)
+
+- Add the mod manager's AI disclosure (`vibecoded`), active development status and building/base tags, following the [manifest guidance](https://jollyname.dev/create/).
+- Keep version 0.6.1, the SDModKit dependency and existing gameplay unchanged.
+
 ## 0.6.1
 
 - Fix unnecessary dependency prompts in Stellar Mod Manager.
