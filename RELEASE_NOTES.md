@@ -1,4 +1,8 @@
-Fixed unnecessary dependency prompts in Stellar Mod Manager.
+StellarFoundations 0.6.2
+
+Update the Stellar Mod Manager listing with AI disclosure (vibecoded), active development status and building/base tags.
+
+This is a metadata and version update. Gameplay, save format, network protocol and the SDModKit requirement are unchanged.
 
 Requirements
 StellarDrive Demo 0.8.2, MelonLoader 0.7.3 and SDModKit 1.3.3.

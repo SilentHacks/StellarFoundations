@@ -17,7 +17,7 @@ Requires StellarDrive Demo 0.8.2, MelonLoader 0.7.3 and SDModKit 1.3.3.
 
 Install through Stellar Mod Manager.
 
-For manual installation, close the game and install the requirements separately. Download StellarFoundations.zip from the [0.6.1 release](https://github.com/SilentHacks/StellarFoundations/releases/tag/v0.6.1) and extract it into the game folder. The DLL belongs at Mods/StellarFoundations.dll.
+For manual installation, close the game and install the requirements separately. Download StellarFoundations.zip from the [0.6.2 release](https://github.com/SilentHacks/StellarFoundations/releases/tag/v0.6.2) and extract it into the game folder. The DLL belongs at Mods/StellarFoundations.dll.
 
 Back up the entire world directory before first use or upgrading, including sdmodkit-content.json and hidden files.
 

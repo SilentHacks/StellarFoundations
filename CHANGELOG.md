@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased (listing metadata)
+## 0.6.2
 
 - Add the mod manager's AI disclosure (`vibecoded`), active development status and building/base tags, following the [manifest guidance](https://jollyname.dev/create/).
-- Keep version 0.6.1, the SDModKit dependency and existing gameplay unchanged.
+- Align the manager manifest, loader, assembly and content registration on version 0.6.2. Keep the SDModKit dependency, gameplay, save format and network protocol unchanged.
 
 ## 0.6.1
 

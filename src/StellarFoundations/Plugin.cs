@@ -17,7 +17,7 @@ namespace StellarFoundations;
 public sealed class Plugin : MelonMod
 {
     internal const string DisplayName = "StellarFoundations";
-    internal const string Version = "0.6.1";
+    internal const string Version = "0.6.2";
     internal const string Owner = "silenthacks.stellarfoundations";
     internal static bool Ready;
     internal static string Failure = string.Empty;
