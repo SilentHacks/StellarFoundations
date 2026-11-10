@@ -4,8 +4,8 @@ using System.Reflection;
 using Core.Services;
 using HarmonyLib;
 using SDModKit.Game;
+using Ships.Interface.Services;
 using TMPro;
-using Tools.Build;
 using UI.Interface.Services;
 using UI.ToolBar;
 using UnityEngine;
@@ -32,6 +32,7 @@ internal static class FoundationHud
     private static Canvas? _canvas;
     private static readonly Color Warning = new Color(1, 0.8f, 0.34f, 1);
     private static FieldInfo TipLabel => Compatibility.Field(typeof(ToolKeyTipUi), "label");
+    private static FieldInfo _hologramPalette = null!, _hologramMaterial = null!;
     internal static Color ValidColor { get; private set; } = new Color(0.2f, 0.9f, 0.65f);
     internal static Color InvalidColor { get; private set; } = new Color(1, 0.25f, 0.2f);
     internal static Material? Hologram { get; private set; }
@@ -41,6 +42,8 @@ internal static class FoundationHud
         || GameRefs.Service<IClosableMenuService>()?.HasClosableMenuOpen() == true;
     internal static void Install(HarmonyRuntime harmony)
     {
+        _hologramPalette = Compatibility.Field(typeof(HolographicDisplayService), "palette");
+        _hologramMaterial = Compatibility.Field(typeof(HolographicDisplayService), "hologramMat");
         harmony.Patch(Compatibility.Method(typeof(ToolKeyTipsUpdater), "GenerateTips"),
             prefix: new HarmonyMethod(typeof(FoundationHud), nameof(KeyTips)) { priority = Priority.Last });
         // Build Plus emits its own hints and handles Shift-drag after the native
@@ -69,12 +72,16 @@ internal static class FoundationHud
         if (!FoundationTool.IsSelected) return true;
         _unlockPreview!.Invoke(null, null); return false;
     }
-    internal static void CapturePreview(PartPreview preview)
+    internal static void CapturePreview()
     {
         if (Hologram != null) return;
-        Hologram = (Material)Compatibility.Field(typeof(PartPreview), "hologramMat").GetValue(preview)!;
-        ValidColor = (Color)Compatibility.Field(typeof(PartPreview), "validColor").GetValue(preview)!;
-        InvalidColor = (Color)Compatibility.Field(typeof(PartPreview), "invalidColor").GetValue(preview)!;
+        var service = GameRefs.Service<IShipHologramService>();
+        if (!(service is HolographicDisplayService) || !(_hologramPalette.GetValue(service) is GameColorPalette palette) || palette == null ||
+            !(_hologramMaterial.GetValue(service) is Material material) || material == null)
+            throw new InvalidOperationException("Native build hologram style is unavailable.");
+        ValidColor = palette.hologramValidColor;
+        InvalidColor = palette.hologramInvalidColor;
+        Hologram = material;
     }
     private static bool Ensure()
     {

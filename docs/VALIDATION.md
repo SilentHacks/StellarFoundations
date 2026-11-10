@@ -2,13 +2,23 @@
 
 ## Supported environment
 
-- StellarDrive Demo 0.8.2, Mono, Unity 6000.3.24f1.
+- StellarDrive Demo 0.8.3, Mono, Unity 6000.3.24f1.
 - MelonLoader 0.7.3 and SDModKit 1.3.3.
 - Shipping assembly: .NET Framework 4.7.2. Offline tests: .NET 9.
 
 Assembly identities and inspected native contracts are checked. Unsupported
 binaries or conflicting movement/save patches fail closed. A game update needs
 revalidation rather than simply changing the version check.
+
+## 0.6.3 compatibility preview
+
+The net472 build and 108 offline tests pass against Windows Demo build 26545602.
+An isolated local host loaded existing grounded bases, placed a new foundation
+and its first floor, and kept the base fixed during a dynamic collision. The
+native save produced matching world and foundation metadata, and the separate
+export removed the attachments from the copy. The host rejected a same-tick
+duplicate placement and refused native pickup of the pier. Remote co-op and extended play
+remain outside this compatibility check.
 
 ## Release candidate 0.5.0, 16 October 2026
 

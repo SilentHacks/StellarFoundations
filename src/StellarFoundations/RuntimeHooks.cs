@@ -21,7 +21,7 @@ using Ships.Interface.Services;
 using Ships.Parts.Common.Model;
 using Ships.Parts.Common.Model.Reactions;
 using Ships.Parts.DockingDoor;
-using Ships.Parts.Thruster;
+using Ships.Parts.ChemicalThruster;
 using Ships.Parts.WarpDrive;
 using Ships.Parts.WoodThruster;
 using Ships.Parts.Gyroscope;
@@ -63,8 +63,8 @@ internal static class RuntimeHooks
         Patch(harmony, typeof(WorldPhysicsServerUpdater), "PrePhysics", nameof(BeforePhysicsTick), null);
         Patch(harmony, typeof(ShipsJointsTreeTracker), "BuildShipGraph", null, nameof(ChooseGroundedRoot), exclusive: true);
         Patch(harmony, typeof(DockingDoorsUpdater), "ConnectShips", nameof(BeforeDock), null, exclusive: true);
-        Patch(harmony, typeof(ShipThrustersUpdater), "WriteFluidTargetConsumption", nameof(BeforeFluidDemand), null);
-        Patch(harmony, typeof(ShipThrustersUpdater), "Update", nameof(BeforeThrusters), null);
+        Patch(harmony, typeof(ChemicalThrustersUpdater), "WriteFluidTargetConsumption", nameof(BeforeFluidDemand), null);
+        Patch(harmony, typeof(ChemicalThrustersUpdater), "Update", nameof(BeforeThrusters), null);
         Patch(harmony, typeof(WoodThrustersUpdater), "Update", nameof(BeforeWoodThrusters), null);
         Patch(harmony, typeof(ShipWarpDrivesUpdater), "UpdateStates", nameof(BeforeWarp), null);
         Patch(harmony, typeof(GyroscopesUpdater), "CalculateShipGyros", nameof(BeforeGyroscopes), null);
@@ -275,8 +275,8 @@ internal static class RuntimeHooks
     private static bool BeforeThrusters(IShipStateWrite ____ship)
     {
         if (!FoundationRegistry.Grounded(____ship.Id)) return true;
-        foreach (var part in ____ship.GetAllStatefulParts<ThrusterState>())
-        { var state = (ThrusterState)part.State; if (state.ThrusterStrength != 0) ____ship.UpdatePartState(part.Id, state with { ThrusterStrength = 0 }); }
+        foreach (var part in ____ship.GetAllStatefulParts<ChemicalThrusterState>())
+        { var state = (ChemicalThrusterState)part.State; if (state.ThrusterStrength != 0) ____ship.UpdatePartState(part.Id, state with { ThrusterStrength = 0 }); }
         return false;
     }
     private static bool BeforeWoodThrusters(IShipStateWrite ____ship)

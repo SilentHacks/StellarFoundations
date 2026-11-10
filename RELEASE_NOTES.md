@@ -1,14 +1,11 @@
-StellarFoundations 0.6.2
+# StellarFoundations 0.6.3
 
-Update the Stellar Mod Manager listing with AI disclosure (vibecoded), active development status and building/base tags.
+- Updated for StellarDrive Demo 0.8.3 on Windows.
+- Grounded bases suppress chemical thruster demand and thrust through the updated game hooks.
+- First-floor snapping uses native hull placement checks. Foundation previews use the game's shared hologram colors.
+- The host rejects overlapping rapid foundation placements while native colliders load.
+- Existing foundation saves and the Foundations co-op protocol carry forward.
 
-This is a metadata and version update. Gameplay, save format, network protocol and the SDModKit requirement are unchanged.
+Requires MelonLoader 0.7.3 and SDModKit 1.3.3. Back up the complete world folder before upgrading. Install through Stellar Mod Manager or close the game and extract StellarFoundations.zip into the game folder.
 
-Requirements
-StellarDrive Demo 0.8.2, MelonLoader 0.7.3 and SDModKit 1.3.3.
-
-Install
-Back up your world, then install through Stellar Mod Manager. For manual installation, close the game and extract StellarFoundations.zip into the game folder.
-
-Uninstall
-Choose Save a separate copy without Foundations in the mod settings before removing the mod.
+To remove Foundations, first use **Save a separate copy without Foundations** from the mod settings.

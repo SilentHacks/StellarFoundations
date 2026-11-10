@@ -2,7 +2,6 @@ using System;
 using System.Reflection;
 using FishNet.Serializing;
 using TMPro;
-using Tools.Build;
 using UI.ToolBar;
 using UnityEngine;
 using Xunit;
@@ -95,8 +94,10 @@ public sealed class PresentationTests
     {
         Assert.Equal(typeof(ToolKeyTipUi), Compatibility.Field(typeof(ToolKeyTipsUpdater), "toolKeyTipPrefab").FieldType);
         Assert.Equal(typeof(TMP_Text), Compatibility.Field(typeof(ToolKeyTipUi), "label").FieldType);
-        Assert.Equal(typeof(Material), Compatibility.Field(typeof(PartPreview), "hologramMat").FieldType);
-        Assert.Equal(typeof(Color), Compatibility.Field(typeof(PartPreview), "validColor").FieldType);
+        Assert.Equal(typeof(Material), Compatibility.Field(typeof(HolographicDisplayService), "hologramMat").FieldType);
+        Assert.Equal(typeof(GameColorPalette), Compatibility.Field(typeof(HolographicDisplayService), "palette").FieldType);
+        Assert.Equal(typeof(Color), Compatibility.Field(typeof(GameColorPalette), nameof(GameColorPalette.hologramValidColor)).FieldType);
+        Assert.Equal(typeof(Color), Compatibility.Field(typeof(GameColorPalette), nameof(GameColorPalette.hologramInvalidColor)).FieldType);
         Assert.NotNull(typeof(ToolKeyTipsUpdater).GetMethod("GenerateTips", BindingFlags.NonPublic | BindingFlags.Instance));
         Assert.NotNull(typeof(ToolKeyTipsUpdater).GetMethod("UpdateKeyTips", BindingFlags.NonPublic | BindingFlags.Instance));
         var palette = Compatibility.Field(typeof(UI.BuildCostTip.BuildCostItemTip), "colorPalette").FieldType;

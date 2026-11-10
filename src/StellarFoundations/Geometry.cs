@@ -139,6 +139,20 @@ internal static class Geometry
         if (!FindSurfaceScene(surface.PlanetId, out var sceneSpace, out var physics, source, cap)) { placement.PendingTerrain = true; reason = "Move closer while planetary terrain loads."; return false; }
         var sceneCap = transpose.Position(source, sceneSpace, cap);
         var sceneRotation = transpose.Rotation(source, sceneSpace, rotation);
+        // New roots are tracked before native physics creates their colliders.
+        // Defer nearby placements until the overlap queries can see those roots.
+        const float pendingColliderDistance = Policy.MaximumLength + 2f;
+        foreach (var ground in FoundationRegistry.Records)
+        {
+            if (ground.Planet != surface.PlanetId || ground.Ship == placement.Ship?.Id) continue;
+            var nearby = ships.GetShip(ground.Ship);
+            if (nearby == null || nearby.IsColliderObjectCreated) continue;
+            if ((Resolve(ground, sceneSpace).Position - sceneCap).sqrMagnitude >= pendingColliderDistance * pendingColliderDistance) continue;
+            placement.PendingTerrain = true;
+            reason = "Wait for the nearby foundation's colliders to load.";
+            return false;
+        }
+        Physics.SyncTransforms();
         var gravity = ServiceLocator.GetService<IWorldEnvironmentServerProvider>().GetGravityAtPosition(sceneSpace, sceneCap);
         if (gravity.sqrMagnitude < 0.0001f) { reason = "Planetary gravity is required."; return false; }
         var up = -gravity.normalized;

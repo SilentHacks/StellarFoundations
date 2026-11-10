@@ -106,7 +106,7 @@ internal static class FoundationTool
         if (!Selected) { Hide(); return true; }
         _buildTool = __instance;
         var preview = (PartPreview)_preview.GetValue(__instance)!;
-        FoundationHud.CapturePreview(preview);
+        FoundationHud.CapturePreview();
         preview.HidePreview();
         if (FoundationHud.MenuOpen) { if (_holding) Cancel(); Hide(); return false; }
         _observed = FoundationNetwork.Now;
@@ -123,7 +123,7 @@ internal static class FoundationTool
     }
     private static bool FirstFloor(SnapDetectionState state, CameraPhysicsData cameraPhysics, ref SnapDetectionResults __result)
     {
-        if (FoundationRegistry.Count == 0 || !(state.partSettings is HullPartSettings floor) || floor.IsStateful || floor.snappingStyle != SnappingStyle.Floor) return true;
+        if (FoundationRegistry.Count == 0 || state.IgnoredPart.HasValue || !(state.PartSettings is HullPartSettings floor) || floor.IsStateful || floor.snappingStyle != SnappingStyle.Floor) return true;
         if (!ClientScene.PhysicsScene.Raycast(cameraPhysics.CameraPos, cameraPhysics.Direction, out var hit, 5f, RaycastMasks.BuildDetectionLayer, QueryTriggerInteraction.Ignore)) return true;
         var proxy = hit.collider.GetComponentInParent<IShipPartPlacements>();
         var identity = hit.collider.GetComponentInParent<IShipFloatingPartId>();
@@ -132,12 +132,12 @@ internal static class FoundationTool
         var delta = local.Pos - Geometry.Vector(pier.LocalCap);
         if (!Policy.CanSnapFirstFloor(delta.x, delta.y, delta.z, local.Normal.y, pier.HasCollar)) return true;
         var coord = Vector3Int.RoundToInt(Geometry.Vector(pier.LocalCap) + Vector3.up * 0.55f);
-        if (!proxy.IsHullPartAvailable(coord, VoxelPartType.Floor)) return true;
         // Native hull meshes face their forward axis; floors face up, with their up axis along the grid.
-        var localRotation = proxy.ToLocalRotation(state.partRotation);
+        var localRotation = proxy.ToLocalRotation(state.PartRotation);
         var forward = PartOrientationHelper.SnapVerticalOrientation(localRotation * Vector3.forward) ?? PartOrientation.Up;
         var up = PartOrientationHelper.SnapFloorOrientation(localRotation * Vector3.up) ?? PartOrientation.Forward;
         var placement = new HullPartPlacement(coord, VoxelPartType.Floor, forward, up);
+        if (!proxy.IsVariableHullSizeAvailable(placement, floor.size)) return true;
         __result = new SnapDetectionResults { IsSnapped = true, shipPartsProxy = proxy, placement = placement, pos = proxy.ToWorldPos(placement) };
         return false;
     }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.3
+
+- Port grounding and chemical thruster hooks to StellarDrive Demo 0.8.3.
+- Use native hull placement checks for the first floor and the game's shared hologram palette.
+- Reject nearby placements while a newly placed foundation's colliders are loading.
+- Keep existing foundation part IDs, save metadata and the co-op protocol.
+
 ## 0.6.2
 
 - Add the mod manager's AI disclosure (`vibecoded`), active development status and building/base tags, following the [manifest guidance](https://jollyname.dev/create/).
