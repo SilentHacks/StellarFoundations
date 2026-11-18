@@ -92,6 +92,38 @@ conflicts. An early load gate rejects orphan foundations before ship creation.
 Runtime faults stop foundation actions/new saves while retaining control of already
 grounded roots. Invalid metadata aborts loading and returns to the menu without saving.
 
+The SDModKit content registry has no removal operation for a loaded part pack.
+Foundations installs its runtime hooks first and publishes its definition last.
+Pack, asset and numeric ID conflicts include the claiming pack in the loader log.
+Placement visuals wait for the game's client visual space and use its actual space
+object, including after a floating-origin reset.
+
+Save callbacks are qualified by the exact callback, target and module identity.
+The inspected Custom Seat, Arsenal and Ship Schematics callbacks write their own
+data after native saving. In those profiles, the native writer returns only after
+the world and SDModKit bundle commits on the calling thread. This preserves the
+callbacks' ordering and can add a save pause. Foundations skips the Ship Schematics
+callback for deferred requests and surfaces commit failures before those callbacks
+can run. Other profiles retain the worker save path. Companion sidecars retain their
+own backup and recovery behavior. Export is withheld while these callbacks are
+active because Foundations cannot produce a complete companion snapshot.
+
+Build Zoop serializes paired hull geometry through a separate sidecar.
+StellarStriderLib writes a registry and part state outside the Foundations
+transaction, and Fusion and Warp10 add their own persistence hooks. Supporting
+these releases requires a shared save contract for capture, commit, backup and
+restore. Safety Rails 1.0.0 also reads the removed `SnapDetectionState.partSettings`
+field during placement preview. Its native adapter needs to be ported and tested
+before its save callback can be qualified.
+
+SDModKit 1.3.3 probes `ConnectionsTracker.GetPartSockets`, which Demo 0.8.3 removed.
+The game now computes the comparison point in
+`ConnectionsTracker.GetSocketPosition(IPartPlacement, SocketObject)`. An upstream
+adapter can use this exact signature and compute coordinates relative to the
+owning generated prefab for registered custom sockets. Qualification needs native
+and generated socket adjacency checks with translated holders. Foundation's
+definition has an empty socket list, so the kit's warning is informational here.
+
 ## Build and test
 
 Use .NET SDK 9.0.101. Game, loader and SDModKit references resolve externally and

@@ -21,6 +21,7 @@ using Tools.Interface.Services;
 using Tools.Recycler;
 using UnityEngine;
 using WorldProvision.Interface.Services;
+using WorldTracking.Interface.Model;
 using WorldTracking.Interface.Services;
 using WorldTracking.Interface.Values;
 
@@ -63,6 +64,7 @@ internal static class FoundationTool
     private static FoundationHover? _recyclerTarget;
     private static bool _releaseRequired;
     private static uint _convertingShip;
+    private static GUIStyle? _failureLabel;
     private static bool Selected => GameRefs.NetworkManagerCount > 0 && GameRefs.InWorld && ToolRefs.BuildActive
         && GameRefs.Service<ILocalSelectedPartProvider>()?.CurrentSelectedPartId == Policy.PartSettingsId;
     internal static bool IsSelected => Selected;
@@ -286,13 +288,12 @@ internal static class FoundationTool
     private static void Compute(CameraPhysicsData camera)
     {
         _valid = false;
-        if (!FoundationNetwork.ClientReady || Plugin.Failure.Length != 0)
+        if (!FoundationNetwork.ClientReady || Plugin.Failure.Length != 0 || !TryPreviewTransform(out var visual))
         { _previewPrompt = new FoundationPrompt(FoundationPhase.Waiting, "Preparing foundations."); Hide(); return; }
         if (!ClientScene.PhysicsScene.Raycast(camera.CameraPos, camera.Direction, out var hit, 5f, ~0, QueryTriggerInteraction.Ignore))
         { _targetProxy = null; _candidate = new FoundationCommand { Action = CommandAction.New }; Status = "Aim at terrain to start a base, or a floor to anchor its structure."; _previewPrompt = new FoundationPrompt(FoundationPhase.Place, Status); Hide(); return; }
         var environment = GameRefs.Service<IWorldEnvironmentClientProvider>();
-        var transpose = GameRefs.Service<IWorldTransposeClient>();
-        if (environment == null || transpose == null) { Hide(); return; }
+        if (environment == null) { Hide(); return; }
         Vector3 cap; Quaternion rotation;
         var request = new FoundationCommand { Rotation = new RotationF(0, 0, 0, 1) };
         var proxy = hit.collider.GetComponentInParent<IShipPartPlacements>();
@@ -318,7 +319,7 @@ internal static class FoundationTool
                 foreach (var pier in ground.Piers)
                     if ((Geometry.Vector(pier.LocalCap) - capLocal).sqrMagnitude < 0.0001f)
                     { _candidate = request; Inspect(); return; }
-            if (_holding && ground == null) Outline(proxy.ShipId, proxy);
+            if (_holding && ground == null) Outline(proxy.ShipId, proxy, visual);
             else if (_outline != null) _outline.enabled = false;
         }
         else if (hit.collider.CompareTag("Planet"))
@@ -345,7 +346,6 @@ internal static class FoundationTool
         UpdateCost(true);
         EnsureGhost();
         _ghost!.SetActive(true);
-        var visual = transpose.ToTransformOperation(ClientOrigin.LocalPhysicsSpaceId, ClientOrigin.LocalVisualSpaceId);
         var visualCap = visual.MultiplyPoint(cap); var visualFoot = visual.MultiplyPoint(contact.Foot);
         var visualRotation = (Quaternion)visual.Rotation * rotation;
         _ghost.transform.SetPositionAndRotation(visualCap, visualRotation);
@@ -450,6 +450,18 @@ internal static class FoundationTool
         if (visible) tracker?.OnPreviewShown?.Invoke(PartRegistration.Settings);
         else tracker?.OnPreviewHidden?.Invoke();
     }
+    private static bool TryPreviewTransform(out TransformOperation transform)
+    {
+        transform = default;
+        // The game supplies a placeholder visual space until its client updater assigns an ID.
+        if (ClientOrigin.LocalVisualSpaceId == 0) return false;
+        var visual = ClientOrigin.LocalVisualSpace;
+        var transpose = GameRefs.Service<IWorldTransposeClient>();
+        var spaces = GameRefs.Service<ISpacesClientProvider>();
+        if (visual == null || transpose == null || spaces == null || !spaces.TryGetSpace(ClientOrigin.LocalPhysicsSpaceId, out var physics)) return false;
+        transform = transpose.ToTransformOperation(physics, visual);
+        return true;
+    }
     private static void UpdateMarkers(double now)
     {
         if (!Selected || FoundationHud.MenuOpen || _candidate.Ship == 0)
@@ -458,11 +470,8 @@ internal static class FoundationTool
         _nextMarkers = now + 0.2;
         var ground = FoundationRegistry.Get(_candidate.Ship);
         var proxy = _targetProxy;
-        if (ground == null || proxy == null || proxy.ShipId != _candidate.Ship)
+        if (ground == null || proxy == null || proxy.ShipId != _candidate.Ship || !TryPreviewTransform(out var visual))
         { if (_markers != null) _markers.SetActive(false); return; }
-        var transpose = GameRefs.Service<IWorldTransposeClient>();
-        if (transpose == null) return;
-        var visual = transpose.ToTransformOperation(ClientOrigin.LocalPhysicsSpaceId, ClientOrigin.LocalVisualSpaceId);
         _markers ??= new GameObject("Nearby foundation markers"); _markers.SetActive(true);
         if (_markerMaterial == null) { _markerMaterial = new Material(_material); FoundationHud.SetGhostColor(_markerMaterial, true); }
         var used = 0;
@@ -509,7 +518,7 @@ internal static class FoundationTool
         var collider = item.GetComponent<Collider>(); collider.enabled = false; UnityEngine.Object.Destroy(collider);
         item.GetComponent<Renderer>().sharedMaterial = _material; return item.transform;
     }
-    private static void Outline(uint ship, IShipPartPlacements proxy)
+    private static void Outline(uint ship, IShipPartPlacements proxy, TransformOperation transform)
     {
         if (_outline == null)
         {
@@ -522,7 +531,6 @@ internal static class FoundationTool
         if (!_outline.enabled || _outlinedShip != ship)
         { var bounds = tracked.GetHullCoordBounds(); _outlineCenter = bounds.Center; _outlineExtents = bounds.Extents + Vector3.one * 0.1f; }
         _outline.enabled = true;
-        var transform = ServiceLocator.GetService<IWorldTransposeClient>().ToTransformOperation(ClientOrigin.LocalPhysicsSpaceId, ClientOrigin.LocalVisualSpaceId);
         for (var i = 0; i < 8; i++)
         {
             var local = _outlineCenter + Vector3.Scale(_outlineExtents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
@@ -551,9 +559,12 @@ internal static class FoundationTool
     {
         if (!Plugin.Ready && Plugin.Failure.Length == 0) return;
         if (FoundationNetwork.ConnectionError.Length != 0) GUI.Box(new Rect(20, 120, 800, 90), FoundationNetwork.ConnectionError);
-        if (Plugin.Failure.Length != 0)
-        {
-            GUI.Box(new Rect(20, 20, 800, 90), Plugin.DisplayName + " stopped: " + Plugin.Failure + "\nResolve the error before loading, saving or continuing a foundation world."); return;
-        }
+        if (Plugin.Failure.Length == 0) return;
+        _failureLabel ??= new GUIStyle(GUI.skin.label) { wordWrap = true };
+        GUILayout.BeginArea(new Rect(20, 20, Mathf.Min(760, Screen.width - 40), 95));
+        GUILayout.BeginVertical(GUI.skin.box);
+        GUILayout.Label(Plugin.FailureHelp, _failureLabel);
+        GUILayout.EndVertical();
+        GUILayout.EndArea();
     }
 }

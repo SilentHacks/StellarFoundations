@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Core.Services;
 using HarmonyLib;
@@ -49,7 +50,8 @@ internal static class FoundationHud
         // Build Plus emits its own hints and handles Shift-drag after the native
         // list. Let this tool own its controls while retaining ordinary tools.
         // Unknown versions receive no guessed private-method patches.
-        var buildPlus = AccessTools.TypeByName("BuildPlus.DragBuilder");
+        var buildPlus = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(assembly => assembly.GetName().Name == "BuildPlus")
+            ?.GetType("BuildPlus.DragBuilder");
         if (buildPlus?.Assembly.ManifestModule.ModuleVersionId == new Guid("39fcd4e3-c9b9-42e3-9507-4ed9ef2512f5"))
         {
             _cancelDrag = Compatibility.Method(buildPlus, "Cancel");

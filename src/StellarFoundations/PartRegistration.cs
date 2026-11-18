@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using Items.Model;
 using SDModKit.Content;
@@ -14,8 +15,9 @@ namespace StellarFoundations;
 internal static class PartRegistration
 {
     internal const string Asset = "SilentHacks.FoundationPier";
+    internal const string PackId = "silenthacks.foundations";
     internal const string Definition = @"{
-          'id':'silenthacks.foundations','name':'" + Plugin.DisplayName + @"','version':'" + Plugin.Version + @"',
+          'id':'" + PackId + @"','name':'" + Plugin.DisplayName + @"','version':'" + Plugin.Version + @"',
           'parts':[{'id':61240,'asset':'SilentHacks.FoundationPier','label':'Foundation',
           'description':'Anchors a structure to the ground.',
           'donor':'SignalSplitter','state':'SignalSplitterState','snapping':'UnderFloor','buildMenuAfter':'WoodFloor','mass':20,
@@ -24,15 +26,33 @@ internal static class PartRegistration
         }";
     private static PartSettings? _basicFloor;
     internal static PartSettings Settings => CustomParts.Get(Policy.PartSettingsId) ?? throw new InvalidOperationException("Foundation is not registered.");
-    internal static void Register()
+    internal static void Register(HarmonyRuntime harmony)
     {
-        if (ContentRegistry.PartDef(Policy.PartSettingsId) != null) throw new InvalidOperationException("Foundation part ID is already registered by another pack.");
-        ContentRegistry.LoadJson(typeof(Plugin).Assembly, Definition, "foundations");
-        new HarmonyRuntime(Plugin.Owner).Patch(Compatibility.Method(typeof(ContentBuilder), "Configure"),
+        var claimed = ContentRegistry.PartDef(Policy.PartSettingsId) ?? ContentRegistry.PartDefByAsset(Asset);
+        var pack = claimed?.Pack ?? ContentRegistry.Packs.FirstOrDefault(entry => entry.Id == PackId);
+        if (pack != null) throw RegistrationConflict(pack.Name, pack.Origin);
+
+        // Registrations through CustomParts bypass the SDModKit content registry.
+        var definitions = (List<CustomPartDefinition>)Compatibility.Field(typeof(CustomParts), "Definitions").GetValue(null)!;
+        var definition = definitions.FirstOrDefault(entry => entry.Id == Policy.PartSettingsId || entry.Name == Asset);
+        if (definition != null) throw RegistrationConflict(definition.Name, "SDModKit CustomParts");
+
+        harmony.Patch(Compatibility.Method(typeof(ContentBuilder), "Configure"),
             postfix: new HarmonyMethod(typeof(PartRegistration), nameof(Configured)));
-        new HarmonyRuntime(Plugin.Owner).Patch(Compatibility.Method(typeof(Research.ResearchClientProxy), "IsPartUnlocked"),
+        harmony.Patch(Compatibility.Method(typeof(Research.ResearchClientProxy), "IsPartUnlocked"),
             prefix: new HarmonyMethod(typeof(PartRegistration), nameof(FoundationUnlock)));
+
+        // SDModKit 1.3.3 cannot remove a registered definition. Publish after all hooks succeed.
+        var assembly = typeof(Plugin).Assembly;
+        var registered = ContentRegistry.LoadJson(assembly, Definition, "foundations");
+        var part = ContentRegistry.PartDef(Policy.PartSettingsId);
+        if (registered == null || part?.Pack != registered || registered.Assembly != assembly || part.Asset != Asset)
+            throw new InvalidOperationException("SDModKit did not register the Foundations part.");
     }
+
+    private static CompatibilityFailure RegistrationConflict(string name, string origin) => new CompatibilityFailure(
+        $"Foundation part {Policy.PartSettingsId}, asset {Asset}, or pack {PackId} is already claimed by {name} ({origin}).",
+        $"Foundations shares a content ID with {name}. Check for an updated mod or a duplicate content pack, then restart the game.");
 
     private static void Configured(ContentPartDef def, PartSettings settings, GameObject prefab)
     {

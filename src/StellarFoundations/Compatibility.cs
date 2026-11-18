@@ -4,8 +4,18 @@ using HarmonyLib;
 
 namespace StellarFoundations;
 
+internal sealed class CompatibilityFailure : NotSupportedException
+{
+    internal string PlayerMessage { get; }
+
+    internal CompatibilityFailure(string message, string playerMessage) : base(message)
+    { PlayerMessage = playerMessage; }
+}
+
 internal static class Compatibility
 {
+    internal const string SupportedGame = "0.8.3";
+    internal const string SupportedKit = "1.3.3";
     private static readonly string[,] Modules = {
         { "Assembly-CSharp", "ad12ecf3-9f55-48b9-b3a6-7434851a54bf" },
         { "Core", "b55d8994-f58d-4aef-8a01-3b8fb22dd514" },
@@ -34,8 +44,15 @@ internal static class Compatibility
     internal static void Validate()
     {
         for (var i = 0; i < Modules.GetLength(0); i++)
-            if (Assembly.Load(Modules[i, 0]).ManifestModule.ModuleVersionId != new Guid(Modules[i, 1]))
-                throw new NotSupportedException(Modules[i, 0] + " differs from the inspected game. Foundations cannot safely load grounded worlds.");
+        {
+            var name = Modules[i, 0];
+            var expected = new Guid(Modules[i, 1]);
+            var installed = Assembly.Load(name).ManifestModule.ModuleVersionId;
+            if (installed == expected) continue;
+            throw new CompatibilityFailure($"{name} has MVID {installed}. Expected {expected}.", name == "SDModKit"
+                ? $"Install SDModKit {SupportedKit} for StellarFoundations {Plugin.Version}, then restart the game."
+                : $"StellarFoundations {Plugin.Version} supports Windows Demo {SupportedGame}. Check for a Foundations update for your game build.");
+        }
     }
     internal static MethodInfo Method(Type type, string name, Type[]? arguments = null) =>
         AccessTools.Method(type, name, arguments) ?? throw new MissingMethodException(type.FullName, name);
@@ -45,17 +62,9 @@ internal static class Compatibility
         var patches = HarmonyRuntime.GetPatchInfo(method);
         if (patches != null)
             foreach (var owner in patches.Owners)
-                if (owner != Plugin.Owner) throw new NotSupportedException("Conflicting foundation movement hook: " + method.DeclaringType?.Name + "." + method.Name + " (" + owner + ").");
+                if (owner != Plugin.Owner) throw PatchConflict(method, owner);
     }
-    internal static void SaveHook(MethodBase method)
-    {
-        var patches = HarmonyRuntime.GetPatchInfo(method);
-        if (patches == null) return;
-        foreach (var owner in patches.Owners)
-        {
-            if (owner == Plugin.Owner || owner == Plugin.Owner + ".loadgate" || owner == "sdmodkit.contentsave") continue;
-            if (owner == "stellarworkshop.saving" && Assembly.Load("StellarWorkshop").ManifestModule.ModuleVersionId == new Guid("40054375-01b2-4786-8f92-7675b17a25d2")) continue;
-            throw new NotSupportedException("Unqualified save hook on " + method.DeclaringType?.Name + "." + method.Name + " (" + owner + ").");
-        }
-    }
+    internal static CompatibilityFailure PatchConflict(MethodBase method, string owner, string? modName = null) => new CompatibilityFailure(
+        $"Unqualified hook on {method.DeclaringType?.FullName}.{method.Name} ({owner}).",
+        $"Foundations is incompatible with {modName ?? owner}. Use a compatible mod profile and restart the game.");
 }

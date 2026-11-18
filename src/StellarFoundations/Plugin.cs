@@ -17,10 +17,11 @@ namespace StellarFoundations;
 public sealed class Plugin : MelonMod
 {
     internal const string DisplayName = "StellarFoundations";
-    internal const string Version = "0.6.3";
+    internal const string Version = "0.6.4";
     internal const string Owner = "silenthacks.stellarfoundations";
     internal static bool Ready;
     internal static string Failure = string.Empty;
+    internal static string FailureHelp = string.Empty;
     internal static FoundationMod Mod = null!;
     private static bool _failedLoad;
     public override void OnInitializeMelon()
@@ -30,9 +31,9 @@ public sealed class Plugin : MelonMod
             // Install the orphan-attachment gate before optional compatibility checks: an
             // unsupported runtime must not silently load a grounded structure as a free ship.
             var loadGate = new HarmonyRuntime(Owner + ".loadgate");
+            loadGate.Patch(Compatibility.Method(typeof(Saving.Services.GameLoader), "LoadState"), prefix: new HarmonyMethod(typeof(Plugin), nameof(GuardDisabledWorld)) { priority = HarmonyLib.Priority.First });
             loadGate.Patch(Compatibility.Method(typeof(Ships.Services.ShipsServerTracker), "LoadShip"),
                 prefix: new HarmonyMethod(typeof(Plugin), nameof(ValidateShipLoad)));
-            loadGate.Patch(Compatibility.Method(typeof(Saving.Services.GameLoader), "LoadState"), prefix: new HarmonyMethod(typeof(Plugin), nameof(GuardDisabledWorld)) { priority = HarmonyLib.Priority.First });
             loadGate.Patch(Compatibility.Method(typeof(Ships.TrackedShipServer), "AddStatefulPart"), prefix: new HarmonyMethod(typeof(RuntimeHooks), nameof(RuntimeHooks.GuardAdd)));
             loadGate.Patch(Compatibility.Method(typeof(Managers.Server.Services.ShipInteractionService), "RpcLogic___PlaceFloatingPart_ServerRPC___2366367339"), prefix: new HarmonyMethod(typeof(RuntimeHooks), nameof(RuntimeHooks.GuardNativePlacement)));
             Compatibility.Validate();
@@ -40,9 +41,8 @@ public sealed class Plugin : MelonMod
             ModKit.Register(Mod, ConfigFile.For("stellardrive.foundations"));
             if (!ModToggles.Enabled(Mod.Id)) { Mod = null!; LoggerInstance.Msg("Foundations is disabled; saved-pier load protection remains active."); return; }
             if (Mod.HeightModifier == null) throw new InvalidOperationException("Foundations controls did not register.");
-            PartRegistration.Register();
         }
-        catch (Exception error) { Fault(error); }
+        catch (Exception error) { StartupFault(error); }
     }
     private static void GuardDisabledWorld(Saving.Interface.Model.ISavedGameFile fileEntry)
     {
@@ -52,8 +52,11 @@ public sealed class Plugin : MelonMod
             foreach (var part in ship["statefulFloatingParts"] as Newtonsoft.Json.Linq.JArray ?? new Newtonsoft.Json.Linq.JArray())
                 if (part.Value<ushort>("settingsId") == Policy.PartSettingsId)
                 {
-                    var error = new NotSupportedException("Enable a compatible Foundations build before loading this save, or load an exported copy without piers.");
-                    LoadFault(error); throw error;
+                    var error = new CompatibilityFailure("The selected save contains foundation piers while Foundations is inactive.",
+                        "Enable a compatible Foundations build to open this world, or open an exported copy without foundations.");
+                    if (Failure.Length == 0) LoadFault(error);
+                    else { MelonLogger.Error(error.Message); _failedLoad = true; }
+                    throw error;
                 }
     }
     private static void ValidateShipLoad(Ships.Interface.Model.State.IShipState shipToLoad)
@@ -63,7 +66,7 @@ public sealed class Plugin : MelonMod
     }
     public override void OnLateInitializeMelon()
     {
-        if (Mod == null) return;
+        if (Mod == null || Failure.Length != 0) return;
         var harmony = new HarmonyRuntime(Owner);
         try
         {
@@ -71,11 +74,16 @@ public sealed class Plugin : MelonMod
             FoundationSaving.Install(harmony);
             FoundationTool.Install(harmony);
             FoundationHud.Install(harmony);
-            FoundationNetwork.Initialize();
+            FoundationNetwork.Initialize(harmony);
+            PartRegistration.Register(harmony);
             Ready = true;
             LoggerInstance.Msg(DisplayName + " " + Version + " ready. Matching clients required.");
         }
-        catch (Exception error) { harmony.UnpatchSelf(); Fault(error); }
+        catch (Exception error)
+        {
+            StartupFault(error);
+            harmony.UnpatchSelf();
+        }
     }
     public override void OnUpdate()
     {
@@ -100,11 +108,21 @@ public sealed class Plugin : MelonMod
     public override void OnApplicationQuit() => FoundationSaving.Drain();
     internal static void Fault(Exception error)
     {
-        Failure = error.GetBaseException().Message;
+        var cause = error.GetBaseException();
+        Failure = cause.Message;
+        FailureHelp = (cause as CompatibilityFailure)?.PlayerMessage
+            ?? (Ready ? "Resolve the error in MelonLoader/Latest.log before continuing or saving this world."
+                : "Foundations could not start. See MelonLoader/Latest.log for details.");
         MelonLogger.Error(DisplayName + ": " + error);
         // Already-grounded roots remain controlled by the physics hooks after a runtime fault.
     }
-    internal static void LoadFault(Exception error) { Fault(error); _failedLoad = true; }
+    private static void StartupFault(Exception error) { Ready = false; Fault(error); }
+    internal static void LoadFault(Exception error)
+    {
+        Fault(error);
+        if (error is System.IO.InvalidDataException) FailureHelp = error.Message;
+        _failedLoad = true;
+    }
 }
 
 public sealed class FoundationMod : SDMod
@@ -125,7 +143,11 @@ public sealed class FoundationMod : SDMod
             UnityEngine.GUILayout.Label("Grounded bases inhibit their own propulsion and warp; machinery remains active.");
             UnityEngine.GUILayout.Label(FoundationSaving.Status);
             UnityEngine.GUILayout.Label("To stop using Foundations, create a separate save copy with its piers removed. Those structures will use normal ship physics in that copy.");
-            if (SDModKit.Game.GameRefs.InWorld && SDModKit.Game.GameRefs.IsServer && !FoundationSaving.Busy && UnityEngine.GUILayout.Button("Save a separate copy without Foundations")) FoundationSaving.RequestExport();
+            if (Plugin.Ready && SDModKit.Game.GameRefs.InWorld && SDModKit.Game.GameRefs.IsServer)
+            {
+                if (!FoundationSaving.CanExport) UnityEngine.GUILayout.Label("Export is unavailable while another mod saves separate world data.");
+                else if (!FoundationSaving.Busy && UnityEngine.GUILayout.Button("Save a separate copy without Foundations")) FoundationSaving.RequestExport();
+            }
         });
     }
     public override void OnWorldExit()

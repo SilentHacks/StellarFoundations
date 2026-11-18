@@ -98,14 +98,14 @@ internal static class FoundationNetwork
             if (session.TargetShip == ship) { session.Selection = ""; session.TargetShip = 0; session.Hold.Reset(); }
     }
 
-    internal static void Initialize()
+    internal static void Initialize(HarmonyRuntime harmony)
     {
+        _authenticate = Compatibility.Method(typeof(ServerManager), "ClientAuthenticated");
+        Compatibility.Exclusive(_authenticate);
+        harmony.Patch(_authenticate, prefix: new HarmonyMethod(typeof(FoundationNetwork), nameof(BeforeAuthentication)));
         GenericWriter<FoundationCommand>.SetWrite(WriteCommand); GenericReader<FoundationCommand>.SetRead(ReadCommand);
         GenericWriter<FoundationReply>.SetWrite(WriteReply); GenericReader<FoundationReply>.SetRead(ReadReply);
         GenericWriter<FoundationSnapshot>.SetWrite(WriteSnapshot); GenericReader<FoundationSnapshot>.SetRead(ReadSnapshot);
-        _authenticate = Compatibility.Method(typeof(ServerManager), "ClientAuthenticated");
-        Compatibility.Exclusive(_authenticate);
-        new HarmonyRuntime(Plugin.Owner).Patch(_authenticate, prefix: new HarmonyMethod(typeof(FoundationNetwork), nameof(BeforeAuthentication)));
     }
     private static bool BeforeAuthentication(NetworkConnection connection)
     {

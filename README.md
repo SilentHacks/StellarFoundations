@@ -17,9 +17,13 @@ Requires Windows, StellarDrive Demo 0.8.3, MelonLoader 0.7.3 and SDModKit 1.3.3.
 
 Install through Stellar Mod Manager.
 
-For manual installation, close the game and install the requirements separately. Download StellarFoundations.zip from the [0.6.3 release](https://github.com/SilentHacks/StellarFoundations/releases/tag/v0.6.3) and extract it into the game folder. The DLL belongs at Mods/StellarFoundations.dll.
+For manual installation, close the game and install the requirements separately. Download StellarFoundations.zip from [GitHub Releases](https://github.com/SilentHacks/StellarFoundations/releases) and extract it into the game folder. The DLL belongs at Mods/StellarFoundations.dll.
 
 Back up the entire world directory before first use or upgrading, including sdmodkit-content.json and hidden files.
+
+If Foundation is missing, check the StellarFoundations version in `MelonLoader/Latest.log`. Version 0.6.2 targets Demo 0.8.2. For a compatibility warning, use a mod profile that supports your game build and the mods used in your world.
+
+StellarFoundations 0.6.4 qualifies Custom Seat 1.1.1, Arsenal 1.12.2 and Ship Schematics 1.0.3 for placement and ordinary saves. Saving with any of these mods can pause the game while the world commits. Export is unavailable with these companions because they store additional world data. Build Zoop 1.6.1, Safety Rails 1.0.0 and StellarStriderLib 1.5.1, including Fusion and Warp10 profiles that use it, are incompatible on this stack.
 
 ## Build and anchor
 

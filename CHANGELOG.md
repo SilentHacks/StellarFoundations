@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4
+
+- Register Foundation only after its runtime hooks are ready.
+- Report incompatible game builds, mod hooks and content IDs with a player-facing reason and loader diagnostics.
+- Qualify the inspected Custom Seat, Arsenal and Ship Schematics saves. Commit the world before their callbacks run.
+- Wait for the client visual space before drawing placement previews and support markers.
+
 ## 0.6.3
 
 - Port grounding and chemical thruster hooks to StellarDrive Demo 0.8.3.

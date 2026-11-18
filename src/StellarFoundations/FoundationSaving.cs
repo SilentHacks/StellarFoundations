@@ -32,11 +32,11 @@ internal static class FoundationSaving
         internal GameSaver? Saver;
         internal Task<Exception?>? Task;
         internal Exception? Failure;
-        internal bool Captured, Shown;
+        internal bool Captured, Shown, Synchronous, Committed;
         internal bool Export;
         internal string? ExportPath;
         internal string? ExportError;
-        internal bool Completed => Failure != null || (Task?.IsCompleted ?? false);
+        internal bool Completed => Failure != null || Committed || (Task?.IsCompleted ?? false);
         internal Exception? Error => Failure ?? (Task?.IsCompleted == true ? Task.GetAwaiter().GetResult() : null);
     }
     private static Job? _job;
@@ -46,7 +46,12 @@ internal static class FoundationSaving
     private static GameSaver? _nativeSaver;
     private static FieldInfo _worldValues = null!, _parameters = null!;
     private static MethodInfo _importWorld = null!;
+    private static MethodInfo? _saveRequestObserver;
+    private static (MethodInfo Method, SaveCompatibility.Target Target)[] _saveTargets = null!;
+    private static bool _companionSave;
+    [ThreadStatic] private static bool _requestDeferred;
     internal static string Status = "No foundation save pending.";
+    internal static bool CanExport => !_companionSave;
     internal static bool Busy
     {
         get
@@ -59,30 +64,54 @@ internal static class FoundationSaving
 
     internal static void Install(HarmonyRuntime harmony)
     {
-        foreach (var method in new[] {
-            Compatibility.Method(typeof(GameSaver), "SaveGame", new[] { typeof(string) }),
-            Compatibility.Method(typeof(GameSaver), "SaveGame", new[] { typeof(SaveGameParams) }),
-            Compatibility.Method(typeof(SaveFileWriter), "WriteGameFile"),
-            Compatibility.Method(typeof(ContentSave), "AfterSaveGame"),
-            Compatibility.Method(typeof(GameLoader), "LoadState")
-        }) Compatibility.SaveHook(method);
+        var save = Compatibility.Method(typeof(GameSaver), "SaveGame", new[] { typeof(string) });
+        var request = Compatibility.Method(typeof(GameSaver), "SaveGame", new[] { typeof(SaveGameParams) });
+        var write = Compatibility.Method(typeof(SaveFileWriter), "WriteGameFile");
+        var metadata = Compatibility.Method(typeof(ContentSave), "AfterSaveGame");
+        var load = Compatibility.Method(typeof(GameLoader), "LoadState");
+        _saveTargets = new[] { (save, SaveCompatibility.Target.SaveWorld), (request, SaveCompatibility.Target.SaveRequest),
+            (write, SaveCompatibility.Target.WriteWorld), (metadata, SaveCompatibility.Target.SaveMetadata), (load, SaveCompatibility.Target.LoadWorld) };
+        _companionSave = ValidateHooks(out _saveRequestObserver);
+        if (_saveRequestObserver != null)
+            harmony.Patch(_saveRequestObserver, prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(AllowSaveRequestObserver)));
         InstallWorkshopAdapter(harmony);
         _worldValues = Compatibility.Field(typeof(WorldData), "Values");
         _importWorld = Compatibility.Method(typeof(WorldData), "A", new[] { typeof(JObject) });
         _parameters = Compatibility.Field(typeof(GameSaver), "_currentSavingParams");
         var begin = new HarmonyMethod(typeof(FoundationSaving), nameof(Begin)) { priority = Priority.First };
-        harmony.Patch(Compatibility.Method(typeof(GameSaver), "SaveGame", new[] { typeof(string) }), prefix: begin,
+        harmony.Patch(save, prefix: begin,
             finalizer: new HarmonyMethod(typeof(FoundationSaving), nameof(Finish)) { priority = Priority.Last });
-        harmony.Patch(Compatibility.Method(typeof(GameSaver), "SaveGame", new[] { typeof(SaveGameParams) }), prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Queue)) { priority = Priority.First });
-        harmony.Patch(Compatibility.Method(typeof(SaveFileWriter), "WriteGameFile"), prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Write)) { priority = Priority.First });
-        harmony.Patch(Compatibility.Method(typeof(ContentSave), "AfterSaveGame"), prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Metadata)) { priority = Priority.First });
+        harmony.Patch(request, prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Queue)) { priority = Priority.First },
+            finalizer: new HarmonyMethod(typeof(FoundationSaving), nameof(FinishRequest)) { priority = Priority.Last });
+        harmony.Patch(write, prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Write)) { priority = Priority.First });
+        harmony.Patch(metadata, prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Metadata)) { priority = Priority.First });
         harmony.Patch(Compatibility.Method(typeof(GameSaver), "SaveScreenshot"), postfix: new HarmonyMethod(typeof(FoundationSaving), nameof(Wait)));
         harmony.Patch(Compatibility.Method(typeof(GameSaver), "IsCurrentlySaving"), postfix: new HarmonyMethod(typeof(FoundationSaving), nameof(IsSaving)));
-        harmony.Patch(Compatibility.Method(typeof(GameLoader), "LoadState"), prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Recover)) { priority = Priority.First });
-        harmony.Patch(Compatibility.Method(typeof(GameLoader), "LoadState"), prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(ValidateLoad)) { priority = Priority.Last, after = new[] { "sdmodkit.contentsave" } });
+        harmony.Patch(load, prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(Recover)) { priority = Priority.First });
+        harmony.Patch(load, prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(ValidateLoad)) { priority = Priority.Last, after = new[] { "sdmodkit.contentsave" } });
         harmony.Patch(Compatibility.Method(typeof(ContentSave), "BeforeLoadState"), prefix: new HarmonyMethod(typeof(FoundationSaving), nameof(LoadBackupMetadata)) { priority = Priority.First });
         harmony.Patch(Compatibility.Method(typeof(GameSaver), "BackupCurrentWorld"), postfix: new HarmonyMethod(typeof(FoundationSaving), nameof(PairNativeBackup)));
         harmony.Patch(Compatibility.Method(typeof(GameSaver), "DestroyOldBackups"), postfix: new HarmonyMethod(typeof(FoundationSaving), nameof(PruneNativeBackups)));
+    }
+    private static bool ValidateHooks(out MethodInfo? requestObserver)
+    {
+        requestObserver = null;
+        var observedSave = false;
+        foreach (var (method, target) in _saveTargets)
+        {
+            observedSave |= SaveCompatibility.Validate(method, target, out var callback);
+            if (callback != null) requestObserver = callback;
+        }
+        return observedSave;
+    }
+
+    private static void RefreshCompatibility()
+    {
+        var observedSave = ValidateHooks(out var requestObserver);
+        if (requestObserver != null && requestObserver != _saveRequestObserver)
+            throw new CompatibilityFailure("A save request observer was registered after Foundations initialized.",
+                "Ship Schematics changed its save hooks during startup. Restart with a compatible mod profile.");
+        _companionSave = observedSave;
     }
     private static void InstallWorkshopAdapter(HarmonyRuntime harmony)
     {
@@ -101,37 +130,51 @@ internal static class FoundationSaving
         // wrapper from opening an independent capture while it owns this world's save.
         __result = true; return false;
     }
-    private static void Begin(string worldDirectoryFullName)
+    private static void Begin(GameSaver __instance, string worldDirectoryFullName)
     {
         if (!FoundationRegistry.Initialized) return;
         if (_job != null) throw new InvalidOperationException("Foundation save already pending.");
         if (Plugin.Failure.Length != 0) throw new InvalidOperationException("Resolve the Foundations error before saving this world.");
         FoundationRegistry.Persist();
-        _job = new Job { Directory = Path.GetFullPath(worldDirectoryFullName), Export = _exportRequested };
+        _job = new Job { Directory = Path.GetFullPath(worldDirectoryFullName), Export = _exportRequested, Synchronous = _companionSave, Saver = __instance };
         _exportRequested = false;
         Status = "Capturing world and foundation attachment data...";
     }
     private static bool Write(SerializableGameWorld gameWorld, string directoryFullName, string saveName, SaveSettings ____saveSettings, ref GameFileInfo __result)
     {
-        if (_job == null) return true;
-        if (_job.Directory != Path.GetFullPath(directoryFullName)) throw new IOException("Save target changed during foundation capture.");
-        _job.World = gameWorld; _job.SaveName = saveName; _job.Encoding = ____saveSettings.encoding;
+        var job = _job;
+        if (job == null) return true;
+        if (job.Directory != Path.GetFullPath(directoryFullName)) throw new IOException("Save target changed during foundation capture.");
+        job.World = gameWorld; job.SaveName = saveName; job.Encoding = ____saveSettings.encoding;
+        if (job.Synchronous)
+        {
+            // Qualified postfixes observe the native call as a completed write.
+            // Commit before returning its result, including on failures and save retries.
+            CaptureMetadata(job);
+            Commit(job, SaveRotationSnapshot.Capture(job.World));
+            job.Committed = true;
+        }
         __result = new GameFileInfo(Path.Combine(directoryFullName, saveName + ".json"), Path.Combine(directoryFullName, saveName + ".jpg")); return false;
     }
     private static bool Metadata(string worldDirectoryFullName)
     {
-        if (_job == null) return true;
-        if (_job.Directory != Path.GetFullPath(worldDirectoryFullName)) throw new IOException("Metadata save target changed.");
+        var job = _job;
+        if (job == null) return true;
+        if (job.Directory != Path.GetFullPath(worldDirectoryFullName)) throw new IOException("Metadata save target changed.");
+        if (!job.Synchronous) CaptureMetadata(job);
+        return false;
+    }
+    private static void CaptureMetadata(Job job)
+    {
         var ships = SDModKit.Game.GameRefs.Service<Ships.Services.ShipsServerTracker>();
         PartData.Prune((ship, part) => ships != null && ships.GetShip(ship) is Ships.TrackedShipServer tracked && tracked.TryGetStatefulPart(part, out _));
         var values = (Dictionary<string, string>)_worldValues.GetValue(null)!;
-        _job.Metadata = new JObject {
+        job.Metadata = new JObject {
             ["format"] = 1, ["game"] = ModStamp.GameVersion,
             ["mods"] = new JArray(ModStamp.Current()),
             ["packs"] = new JArray(ContentRegistry.Packs.Select(pack => pack.Id + "@" + pack.Version)),
             ["parts"] = PartData.Export(), ["world"] = JObject.FromObject(values)
         };
-        return false;
     }
     private static Exception? Finish(GameSaver __instance, Exception? __exception)
     {
@@ -139,38 +182,70 @@ internal static class FoundationSaving
         if (job == null || job.Captured) return __exception;
         job.Captured = true; job.Saver = __instance;
         job.Failure = __exception;
+        if (job.Synchronous)
+        {
+            if (!job.Committed && job.Failure == null) job.Failure = new IOException("The save returned before the foundation snapshot was committed.");
+            return job.Failure;
+        }
         if (job.World == null || job.Metadata == null) job.Failure = new IOException("Incomplete foundation save capture. Previous files were retained.", __exception);
         if (job.Failure == null)
         {
-            var rotations = SaveRotationSnapshot.Capture(job.World!);
-            job.Task = Task.Run<Exception?>(() => {
-                try
-                {
-                    var settings = new JsonSerializerSettings { ContractResolver = new WritableOnlyContractResolver() };
-                    settings.Converters.Add(rotations);
-                    var bytes = job.Encoding.GetBytes(JsonConvert.SerializeObject(job.World, Formatting.None, settings));
-                    job.Metadata!["foundationsSnapshot"] = new JObject { ["format"] = 1, ["worldSha256"] = AtomicSaveBundle.Hash(bytes) };
-                    AtomicSaveBundle.Commit(job.Directory, new Dictionary<string, byte[]> {
-                        [job.SaveName + ".json"] = bytes,
-                        ["sdmodkit-content.json"] = new UTF8Encoding(false).GetBytes(job.Metadata.ToString(Formatting.None))
-                    });
-                    if (job.Export)
-                    {
-                        try { job.ExportPath = FoundationExport.WriteCopy(job.Directory, bytes, job.Metadata); }
-                        catch (Exception exportError) { job.ExportError = exportError.Message; }
-                    }
-                    return null;
-                }
-                catch (Exception error) { return error; }
-            });
+            try
+            {
+                var rotations = SaveRotationSnapshot.Capture(job.World!);
+                job.Task = Task.Run<Exception?>(() => {
+                    try { Commit(job, rotations); return null; }
+                    catch (Exception error) { return error; }
+                });
+            }
+            catch (Exception error) { job.Failure = error; }
         }
         return __exception;
     }
-    private static bool Queue(GameSaver __instance, SaveGameParams saveGameParams)
+    private static void Commit(Job job, SaveRotationSnapshot rotations)
     {
-        if (_job == null) return true;
+        var settings = new JsonSerializerSettings { ContractResolver = new WritableOnlyContractResolver() };
+        settings.Converters.Add(rotations);
+        var bytes = job.Encoding.GetBytes(JsonConvert.SerializeObject(job.World, Formatting.None, settings));
+        job.Metadata!["foundationsSnapshot"] = new JObject { ["format"] = 1, ["worldSha256"] = AtomicSaveBundle.Hash(bytes) };
+        AtomicSaveBundle.Commit(job.Directory, new Dictionary<string, byte[]> {
+            [job.SaveName + ".json"] = bytes,
+            ["sdmodkit-content.json"] = new UTF8Encoding(false).GetBytes(job.Metadata.ToString(Formatting.None))
+        });
+        if (!job.Export) return;
+        try { job.ExportPath = FoundationExport.WriteCopy(job.Directory, bytes, job.Metadata); }
+        catch (Exception error) { job.ExportError = error.Message; }
+    }
+    private static bool Queue(GameSaver __instance, SaveGameParams saveGameParams, out bool __state)
+    {
+        __state = _requestDeferred;
+        _requestDeferred = _job != null;
+        if (_job == null)
+        {
+            if (FoundationRegistry.Initialized)
+            {
+                try { RefreshCompatibility(); }
+                catch (CompatibilityFailure error) { Plugin.Fault(error); }
+                if (Plugin.Failure.Length != 0 || _exportRequested && !CanExport)
+                {
+                    _requestDeferred = true;
+                    return false;
+                }
+            }
+            return true;
+        }
         if (!_queued.HasValue || !saveGameParams.IsAutomatic) { _queued = saveGameParams; _queuedSaver = __instance; }
         return false;
+    }
+    private static bool AllowSaveRequestObserver() => !_requestDeferred && (_job == null || _job.Committed);
+
+    private static Exception? FinishRequest(Exception? __exception, bool __state)
+    {
+        _requestDeferred = __state;
+        var job = _job;
+        if (__exception == null || job == null || !job.Synchronous || !ReferenceEquals(job.Failure, __exception)) return __exception;
+        ShowFailure(job);
+        return null;
     }
     private static void IsSaving(GameSaver __instance, ref bool __result) { if (ReferenceEquals(_job?.Saver, __instance)) __result = true; }
     private static void Wait(GameSaver __instance, ref IEnumerator __result)
@@ -199,7 +274,7 @@ internal static class FoundationSaving
     private static void ShowFailure(Job job)
     {
         if (job.Shown) return; job.Shown = true;
-        Status = "Save failed. Previous complete save or recovery copies retained.";
+        Status = job.Committed ? "World saved, but a mod could not finish saving its data." : "Save failed. Your previous complete save is available for recovery.";
         MelonLoader.MelonLogger.Error(Plugin.DisplayName + ": " + job.Error);
         Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
     }
@@ -207,14 +282,14 @@ internal static class FoundationSaving
     {
         var job = _job; if (job == null || !job.Shown) return;
         GUILayout.BeginArea(new Rect(20, 120, 720, 140), GUI.skin.box);
-        GUILayout.Label(Status); GUILayout.Label("New progress is not saved. The world and its attachment metadata must recover together.");
+        GUILayout.Label(Status);
         if (GUILayout.Button("Retry saving")) { var saver = job.Saver; _job = null; _queued = null; if (saver != null) { _parameters.SetValue(saver, null); saver.SaveGame(new SaveGameParams { IsAutomatic = false }); } }
         GUILayout.EndArea();
     }
     internal static void Drain() { if (_job?.Task != null) _job.Task.GetAwaiter().GetResult(); }
     internal static void RequestExport()
     {
-        if (Busy || !SDModKit.Game.GameRefs.IsServer || !FoundationRegistry.Initialized || Plugin.Failure.Length != 0) return;
+        if (!CanExport || Busy || !SDModKit.Game.GameRefs.IsServer || !FoundationRegistry.Initialized || Plugin.Failure.Length != 0) return;
         var saver = UnityEngine.Object.FindFirstObjectByType<GameSaver>();
         if (saver == null) return;
         _exportRequested = true;
@@ -232,7 +307,11 @@ internal static class FoundationSaving
     }
     private static void Recover(ISavedGameFile fileEntry)
     {
-        try { if (fileEntry?.SaveFileInfo?.Directory != null) AtomicSaveBundle.Recover(fileEntry.SaveFileInfo.Directory.FullName); }
+        try
+        {
+            RefreshCompatibility();
+            if (fileEntry?.SaveFileInfo?.Directory != null) AtomicSaveBundle.Recover(fileEntry.SaveFileInfo.Directory.FullName);
+        }
         catch (Exception error) { Plugin.LoadFault(error); throw; }
     }
 

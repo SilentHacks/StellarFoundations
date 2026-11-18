@@ -10,6 +10,27 @@ Assembly identities and inspected native contracts are checked. Unsupported
 binaries or conflicting movement/save patches fail closed. A game update needs
 revalidation rather than simply changing the version check.
 
+## 0.6.4 compatibility qualification
+
+- The standalone suite runs without installing detours. Policy cases cover the exact
+  callback, module identity and native target for each approved companion.
+- Native tests used isolated worlds on Windows build 26545602. The standalone
+  configuration passed placement, first-floor snapping, collision, save, export and
+  paired backup restoration. A rendered run also exercised the native build tool
+  with Build Plus and StellarPerformance 2.2.0 installed.
+- Custom Seat, Arsenal and Ship Schematics ran together through placement and saving.
+  An injected journal write failure left the world, SDModKit metadata and companion
+  files byte-identical. These tests cover the approved callback ordering and the
+  Foundations transaction. Companion mods retain their own backup semantics.
+- Build Zoop, Safety Rails, Fusion and Warp10 were rejected before the definition was
+  published. A grounded world returned to the menu under an incompatible profile.
+  A duplicate content ID was attributed to its claiming pack, and an outdated
+  SDModKit build was refused with the required version in the startup message.
+- Batch-mode placement waited for a valid visual space. The rendered client placed
+  a Foundation successfully with the regular four-wood recipe. The published
+  StellarPerformance 2.2.0 adapter skipped its optional empty-warp optimization
+  when it saw the new Foundations module identity.
+
 ## 0.6.3 compatibility preview
 
 The net472 build and 108 offline tests pass against Windows Demo build 26545602.
